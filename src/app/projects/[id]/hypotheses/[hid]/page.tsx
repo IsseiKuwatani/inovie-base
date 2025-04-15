@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
 import {
@@ -10,10 +10,13 @@ import {
   FlaskConical,
   Calendar,
   Grid3x3,
+  Trash2,
+  Edit2
 } from 'lucide-react'
 
 export default function HypothesisDetailPage() {
   const { id: projectId, hid: hypothesisId } = useParams()
+  const router = useRouter()
   const [hypothesis, setHypothesis] = useState<any>(null)
   const [validations, setValidations] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -25,7 +28,6 @@ export default function HypothesisDetailPage() {
         .select('*')
         .eq('id', hypothesisId)
         .single()
-
       setHypothesis(data)
     }
 
@@ -35,7 +37,6 @@ export default function HypothesisDetailPage() {
         .select('*')
         .eq('hypothesis_id', hypothesisId)
         .order('created_at', { ascending: false })
-
       setValidations(data || [])
     }
 
@@ -43,6 +44,20 @@ export default function HypothesisDetailPage() {
       setLoading(false)
     )
   }, [hypothesisId])
+
+  const handleDelete = async (validationId: string) => {
+    const confirm = window.confirm('この検証を削除してもよろしいですか？')
+    if (!confirm) return
+
+    const { error } = await supabase
+      .from('validations')
+      .delete()
+      .eq('id', validationId)
+
+    if (!error) {
+      setValidations((prev) => prev.filter((v) => v.id !== validationId))
+    }
+  }
 
   const statusColorMap: Record<string, string> = {
     未検証: 'bg-gray-400',
@@ -97,7 +112,7 @@ export default function HypothesisDetailPage() {
         </div>
       </div>
 
-      {/* 詳細 */}
+      {/* 詳細表示 */}
       <div className="grid md:grid-cols-2 gap-6">
         <DetailBlock label="前提" value={hypothesis.assumption} />
         <DetailBlock label="解決策" value={hypothesis.solution} />
@@ -116,20 +131,58 @@ export default function HypothesisDetailPage() {
         </h2>
 
         {validations.length === 0 ? (
-          <p className="text-sm text-gray-500">まだ検証は登録されていません。</p>
-        ) : (
-          <ul className="space-y-4">
-            {validations.map((v) => (
-              <li key={v.id} className="bg-white border rounded-lg shadow-sm p-4">
-                <p className="text-sm text-gray-800 mb-1">
-                  <Calendar size={14} className="inline-block mr-1" />
-                  {new Date(v.created_at).toLocaleString()}
-                </p>
-                <p className="text-sm text-gray-600 whitespace-pre-wrap">{v.note || '（メモなし）'}</p>
-              </li>
-            ))}
-          </ul>
-        )}
+  <p className="text-sm text-gray-500">まだ検証は登録されていません。</p>
+) : (
+  <ul className="space-y-4">
+    {validations.map((v) => (
+      <li key={v.id} className="bg-white border rounded-lg shadow-sm p-4 relative group">
+        <div className="flex justify-between items-start">
+          {/* 左：検証情報 */}
+          <div className="space-y-2 w-full">
+            <p className="text-sm text-gray-800">
+              <Calendar size={14} className="inline-block mr-1" />
+              {new Date(v.created_at).toLocaleString()}
+            </p>
+
+            <div>
+              <p className="text-xs text-gray-500">検証手段</p>
+              <p className="text-sm text-gray-900">{v.method || '（未入力）'}</p>
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-500">検証内容</p>
+              <p className="text-sm text-gray-900 whitespace-pre-wrap">{v.description || '（未入力）'}</p>
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-500">結果・気づき</p>
+              <p className="text-sm text-gray-900 whitespace-pre-wrap">{v.result || '（未入力）'}</p>
+            </div>
+          </div>
+
+          {/* 右：操作アイコン */}
+          <div className="flex gap-2 absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition">
+            <Link
+               href={`/projects/${projectId}/hypotheses/${hypothesisId}/validations/${v.id}/edit`}
+              className="text-blue-600 hover:text-blue-800"
+              title="編集"
+            >
+              <Edit2 size={16} />
+            </Link>
+            <button
+              onClick={() => handleDelete(v.id)}
+              className="text-red-500 hover:text-red-700"
+              title="削除"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+      </li>
+    ))}
+  </ul>
+)}
+
       </div>
     </div>
   )
@@ -145,12 +198,11 @@ function DetailBlock({ label, value }: { label: string; value: string }) {
     </div>
   )
 }
+
 function MiniMap({ impact, uncertainty }: { impact: number; uncertainty: number }) {
   return (
     <div className="flex flex-col items-start">
-      {/* 上部のマップ本体 */}
       <div className="flex">
-        {/* 縦軸ラベル（影響度） */}
         <div className="flex flex-col justify-center mr-2 text-xs text-gray-500 space-y-1">
           {[5, 4, 3, 2, 1].map((i) => (
             <div key={`impact-${i}`} className="h-4 flex items-center justify-end w-6">
@@ -158,8 +210,6 @@ function MiniMap({ impact, uncertainty }: { impact: number; uncertainty: number 
             </div>
           ))}
         </div>
-
-        {/* マップグリッド */}
         <div className="grid grid-cols-5 gap-1 bg-gray-100 p-2 rounded border">
           {[5, 4, 3, 2, 1].map((i) =>
             [1, 2, 3, 4, 5].map((u) => {
@@ -168,15 +218,13 @@ function MiniMap({ impact, uncertainty }: { impact: number; uncertainty: number 
                 <div
                   key={`${i}-${u}`}
                   className={`h-4 w-4 rounded-sm ${active ? 'bg-indigo-600' : 'bg-gray-300'}`}
-                  title={`影響度(縦) ${i} / 不確実性(横) ${u}`}
+                  title={`影響度 ${i} / 不確実性 ${u}`}
                 />
               )
             })
           )}
         </div>
       </div>
-
-      {/* 横軸ラベル（不確実性） */}
       <div className="flex justify-center mt-2 ml-8 gap-2 text-xs text-gray-500">
         {[1, 2, 3, 4, 5].map((u) => (
           <div key={`uncertainty-${u}`} className="w-4 text-center">
@@ -184,10 +232,6 @@ function MiniMap({ impact, uncertainty }: { impact: number; uncertainty: number 
           </div>
         ))}
       </div>
-
     </div>
   )
 }
-
-
-

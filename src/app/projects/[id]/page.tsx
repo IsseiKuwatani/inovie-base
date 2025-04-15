@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
-import { MapPinned } from 'lucide-react'
+import { MapPinned, ListTree } from 'lucide-react'
 
-export default function ProjectDetailPage() {
+export default function ProjectDashboardPage() {
   const { id: projectId } = useParams()
   const [project, setProject] = useState<any>(null)
   const [hypotheses, setHypotheses] = useState<any[]>([])
@@ -17,9 +17,8 @@ export default function ProjectDetailPage() {
       const { data: projectData } = await supabase.from('projects').select('*').eq('id', projectId).single()
       const { data: hypothesisData } = await supabase
         .from('hypotheses')
-        .select('*')
+        .select('id, status, created_at')
         .eq('project_id', projectId)
-        .order('created_at', { ascending: false })
 
       setProject(projectData)
       setHypotheses(hypothesisData || [])
@@ -32,48 +31,57 @@ export default function ProjectDetailPage() {
   if (loading) return <p className="text-gray-500">読み込み中...</p>
   if (!project) return <p className="text-red-500">プロジェクトが見つかりません</p>
 
+  const hypothesisCount = hypotheses.length
+  const lastUpdated = hypotheses.length > 0
+    ? new Date(Math.max(...hypotheses.map(h => new Date(h.created_at).getTime()))).toLocaleDateString()
+    : '―'
+
+  const statusCount = (status: string) =>
+    hypotheses.filter((h) => h.status === status).length
+
   return (
-    <div className="max-w-5xl mx-auto space-y-8 px-4 py-8">
-      <header>
+    <div className="max-w-5xl mx-auto px-4 py-10 space-y-10">
+      <header className="space-y-2">
         <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
-        <p className="text-gray-600 mt-1">{project.description}</p>
+        <p className="text-gray-600">{project.description || '（説明なし）'}</p>
       </header>
 
-      <div className="flex justify-between items-center mt-6">
-        <h2 className="text-xl font-semibold text-gray-800">仮説一覧</h2>
-        <div className="flex gap-3">
-          <Link
-            href={`/projects/${projectId}/hypotheses/map`}
-            className="flex items-center gap-2 text-sm px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-500"
-          >
-            <MapPinned size={16} />
-            マップで表示
-          </Link>
-          <Link
-            href={`/projects/${projectId}/hypotheses/new`}
-            className="text-sm px-4 py-2 rounded bg-gray-900 text-white hover:bg-gray-700"
-          >
-            ＋ 仮説を追加
-          </Link>
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="bg-white border rounded-lg p-6 shadow-sm space-y-4">
+          <h2 className="text-sm font-semibold text-gray-600">仮説の統計</h2>
+          <ul className="text-sm text-gray-800 space-y-1">
+            <li>🧪 総仮説数：<strong>{hypothesisCount}</strong></li>
+            <li>🕒 最終更新日：<strong>{lastUpdated}</strong></li>
+            <li>📌 ステータス内訳：</li>
+            <ul className="ml-4 space-y-1 text-gray-700">
+              <li>・未検証：{statusCount('未検証')} 件</li>
+              <li>・検証中：{statusCount('検証中')} 件</li>
+              <li>・成立：{statusCount('成立')} 件</li>
+              <li>・否定：{statusCount('否定')} 件</li>
+            </ul>
+          </ul>
+        </div>
+
+        <div className="bg-white border rounded-lg p-6 shadow-sm space-y-4">
+          <h2 className="text-sm font-semibold text-gray-600">次のアクション</h2>
+          <div className="flex flex-col gap-3">
+            <Link
+              href={`/projects/${projectId}/hypotheses`}
+              className="flex items-center gap-2 px-4 py-2 rounded text-sm bg-gray-900 text-white hover:bg-gray-700"
+            >
+              <ListTree size={16} />
+              仮説一覧を見る
+            </Link>
+            <Link
+              href={`/projects/${projectId}/hypotheses/map`}
+              className="flex items-center gap-2 px-4 py-2 rounded text-sm bg-indigo-600 text-white hover:bg-indigo-500"
+            >
+              <MapPinned size={16} />
+              仮説マップで確認
+            </Link>
+          </div>
         </div>
       </div>
-
-      <ul className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {hypotheses.map((h) => (
-          <li key={h.id} className="border rounded-xl p-4 bg-white shadow-sm space-y-2">
-            <h3 className="text-lg font-semibold text-gray-800">{h.title}</h3>
-            <p className="text-sm text-gray-600"><strong>前提:</strong> {h.assumption || '―'}</p>
-            <p className="text-sm text-gray-600"><strong>期待効果:</strong> {h.expected_effect || '―'}</p>
-            <p className="text-sm text-gray-500"><strong>ステータス:</strong> {h.status}</p>
-            <Link
-              href={`/projects/${projectId}/hypotheses/${h.id}`}
-              className="text-blue-600 text-sm hover:underline"
-            >
-              ▶ 詳細を見る
-            </Link>
-          </li>
-        ))}
-      </ul>
     </div>
   )
 }

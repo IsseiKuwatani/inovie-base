@@ -17,6 +17,7 @@ export default function EditHypothesisPage() {
     status: '未検証',
     impact: 3,
     uncertainty: 3,
+    confidence: 3, // ✅ 追加
   })
 
   const [loading, setLoading] = useState(true)
@@ -29,25 +30,36 @@ export default function EditHypothesisPage() {
         .select('*')
         .eq('id', hypothesisId)
         .single()
-
+  
       if (error) {
         setError('データ取得に失敗しました')
       } else if (data) {
-        setForm(data)
+        setForm({
+          title: data.title ?? '',
+          assumption: data.assumption ?? '',
+          solution: data.solution ?? '',
+          expected_effect: data.expected_effect ?? '',
+          type: data.type ?? '課題仮説',
+          status: data.status ?? '未検証',
+          impact: data.impact ?? 3,
+          uncertainty: data.uncertainty ?? 3,
+          confidence: data.confidence ?? 3, // ← null対策
+        })
       }
-
+  
       setLoading(false)
     }
-
+  
     fetchHypothesis()
   }, [hypothesisId])
+  
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleSliderChange = (name: 'impact' | 'uncertainty', value: number) => {
+  const handleSliderChange = (name: 'impact' | 'uncertainty' | 'confidence', value: number) => {
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -57,16 +69,7 @@ export default function EditHypothesisPage() {
 
     const { error } = await supabase
       .from('hypotheses')
-      .update({
-        title: form.title,
-        assumption: form.assumption,
-        solution: form.solution,
-        expected_effect: form.expected_effect,
-        type: form.type,
-        status: form.status,
-        impact: form.impact,
-        uncertainty: form.uncertainty,
-      })
+      .update(form)
       .eq('id', hypothesisId)
 
     if (error) {
@@ -79,12 +82,12 @@ export default function EditHypothesisPage() {
   if (loading) return <p className="text-gray-500">読み込み中...</p>
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-10 space-y-6">
+    <div className="max-w-3xl mx-auto px-6 py-10 space-y-6 bg-white rounded shadow-sm">
       <h1 className="text-2xl font-bold text-gray-900">仮説を編集</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Input label="仮説タイトル" name="title" value={form.title} onChange={handleChange} required />
-        <Textarea label="前提" name="assumption" value={form.assumption} onChange={handleChange} />
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <Input label="仮説タイトル" name="title" value={form.title} onChange={handleChange} />
+        <Textarea label="前提（なぜそう考えるか）" name="assumption" value={form.assumption} onChange={handleChange} />
         <Textarea label="解決策（solution）" name="solution" value={form.solution} onChange={handleChange} />
         <Textarea label="期待される効果" name="expected_effect" value={form.expected_effect} onChange={handleChange} />
 
@@ -105,54 +108,82 @@ export default function EditHypothesisPage() {
 
         <Slider label="影響度" name="impact" value={form.impact} onChange={handleSliderChange} />
         <Slider label="不確実性" name="uncertainty" value={form.uncertainty} onChange={handleSliderChange} />
+        <Slider label="確信度" name="confidence" value={form.confidence} onChange={handleSliderChange} />
 
         <button
           type="submit"
-          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-500"
+          className="bg-indigo-600 text-white px-5 py-2 rounded-md hover:bg-indigo-500 transition"
         >
           保存する
         </button>
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
       </form>
     </div>
   )
 }
 
-function Input({ label, ...props }: any) {
+/* UI Components */
+function Input({ label, name, value, onChange }: any) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <input {...props} className="w-full p-2 border border-gray-300 rounded mt-1" />
+      <input
+        name={name}
+        value={value}
+        onChange={onChange}
+        className="w-full p-2 border border-gray-300 rounded mt-1 focus:ring-indigo-500"
+      />
     </div>
   )
 }
 
-function Textarea({ label, ...props }: any) {
+function Textarea({ label, name, value, onChange }: any) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <textarea {...props} rows={3} className="w-full p-2 border border-gray-300 rounded mt-1" />
+      <textarea
+        name={name}
+        value={value}
+        onChange={onChange}
+        className="w-full p-2 border border-gray-300 rounded mt-1 focus:ring-indigo-500"
+        rows={3}
+      />
     </div>
   )
 }
 
-function Select({ label, children, ...props }: any) {
+function Select({ label, name, value, onChange, children }: any) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <select {...props} className="w-full p-2 border border-gray-300 rounded mt-1">
+      <select
+        name={name}
+        value={value}
+        onChange={onChange}
+        className="w-full p-2 border border-gray-300 rounded mt-1 bg-white focus:ring-indigo-500"
+      >
         {children}
       </select>
     </div>
   )
 }
 
-function Slider({ label, name, value, onChange }: { label: string, name: 'impact' | 'uncertainty', value: number, onChange: (name: 'impact' | 'uncertainty', v: number) => void }) {
+function Slider({
+  label,
+  name,
+  value,
+  onChange,
+}: {
+  label: string
+  name: 'impact' | 'uncertainty' | 'confidence'
+  value: number
+  onChange: (name: 'impact' | 'uncertainty' | 'confidence', value: number) => void
+}) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700">
-        {label}：{value}
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        {label}：<span className="font-semibold text-indigo-600">{value}</span>
       </label>
       <input
         type="range"
@@ -161,7 +192,7 @@ function Slider({ label, name, value, onChange }: { label: string, name: 'impact
         step={1}
         value={value}
         onChange={(e) => onChange(name, Number(e.target.value))}
-        className="w-full mt-1"
+        className="w-full appearance-none h-2 rounded bg-indigo-200 outline-none focus:ring-2 focus:ring-indigo-500"
       />
     </div>
   )
