@@ -1,12 +1,13 @@
-// src/app/layout.tsx
-import Link from 'next/link';
-import './globals.css';
-import { LayoutDashboard, FolderKanban, FlaskConical, Settings } from 'lucide-react';
+import Link from 'next/link'
+import './globals.css'
+import { LayoutDashboard, FolderKanban, FlaskConical, Settings } from 'lucide-react'
+import SidebarFooter from '@/components/SidebarFooter'
+import Breadcrumbs from '@/components/Breadcrumbs'
 
 export const metadata = {
   title: 'Inovie',
   description: '仮説・検証をもっとスマートに',
-};
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,13 +22,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <NavItem href="#" icon={<FlaskConical size={20} />}>仮説</NavItem>
             <NavItem href="#" icon={<Settings size={20} />}>設定</NavItem>
           </nav>
+
+          <SidebarFooter />
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 p-10">{children}</main>
+        <main className="flex-1 p-6 md:p-10 space-y-6">
+          <Breadcrumbs /> {/* パンくずリストを常設！ */}
+          {children}
+        </main>
       </body>
     </html>
-  );
+  )
 }
 
 function NavItem({ href, icon, children }: { href: string; icon: React.ReactNode; children: React.ReactNode }) {
@@ -39,5 +45,5 @@ function NavItem({ href, icon, children }: { href: string; icon: React.ReactNode
       {icon}
       <span className="text-sm font-medium">{children}</span>
     </Link>
-  );
+  )
 }

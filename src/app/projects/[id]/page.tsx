@@ -1,72 +1,64 @@
-// src/app/projects/[id]/page.tsx
-'use client';
+'use client'
 
-import { useParams } from 'next/navigation';
-import { useMemo } from 'react';
-import { Edit, FlaskConical, PlusCircle } from 'lucide-react';
-import Link from 'next/link';
-
-const projects = [
-  { id: 'alpha', name: '新規Webアプリ「Alpha」', status: '検証中', description: 'Webサービスの仮説検証プロジェクトです。' },
-  { id: 'beta', name: 'SaaSサービス「Beta」', status: '仮説整理中', description: '業務支援SaaSの初期フェーズ。' },
-];
+import { useEffect, useState } from 'react'
+import { useParams } from 'next/navigation'
+import { supabase } from '@/lib/supabaseClient'
+import Link from 'next/link'
 
 export default function ProjectDetailPage() {
-  const { id } = useParams();
-  const project = useMemo(() => projects.find(p => p.id === id), [id]);
+  const { id: projectId } = useParams()
+  const [project, setProject] = useState<any>(null)
+  const [hypotheses, setHypotheses] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  if (!project) {
-    return <div>プロジェクトが見つかりませんでした。</div>;
-  }
+  useEffect(() => {
+    const fetchData = async () => {
+      const { data: projectData } = await supabase.from('projects').select('*').eq('id', projectId).single()
+      const { data: hypothesisData } = await supabase
+        .from('hypotheses')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+      setProject(projectData)
+      setHypotheses(hypothesisData || [])
+      setLoading(false)
+    }
+    fetchData()
+  }, [projectId])
+
+  if (loading) return <p className="text-gray-500">読み込み中...</p>
+  if (!project) return <p className="text-red-500">プロジェクトが見つかりません</p>
 
   return (
-    <div className="space-y-6">
-      {/* ヘッダー */}
+    <div className="max-w-4xl mx-auto space-y-8">
+      <header>
+        <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
+        <p className="text-gray-600 mt-2">{project.description}</p>
+      </header>
+
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{project.name}</h1>
-        <button className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-100 rounded-md hover:bg-gray-200">
-          <Edit size={16} />
-          編集
-        </button>
+        <h2 className="text-xl font-semibold">仮説一覧</h2>
+        <Link
+          href={`/projects/${projectId}/hypotheses/new`}
+          className="bg-gray-900 text-white px-4 py-2 rounded hover:bg-gray-700"
+        >
+          ＋ 仮説を追加
+        </Link>
       </div>
 
-      {/* ステータス + 説明 */}
-      <div className="flex items-center gap-4 text-sm text-gray-600">
-        <StatusBadge status={project.status} />
-        <span>{project.description}</span>
-      </div>
-
-      {/* 仮説一覧（仮データ） */}
-      <div>
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-lg font-semibold">仮説一覧</h2>
-          <button className="flex items-center gap-1 text-sm text-blue-600 hover:underline">
-            <PlusCircle size={16} />
-            仮説を追加
-          </button>
-        </div>
-        <ul className="space-y-3">
-          <li className="flex items-center gap-2 bg-white border rounded-md p-4">
-            <FlaskConical size={18} className="text-gray-500" />
-            <span className="text-sm">ターゲット企業の課題感は強いか？</span>
+      <ul className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {hypotheses.map((h) => (
+          <li key={h.id} className="border rounded-xl p-4 bg-white shadow-sm space-y-2">
+            <h3 className="text-lg font-semibold text-gray-800">{h.title}</h3>
+            <p className="text-sm text-gray-600"><strong>前提:</strong> {h.assumption}</p>
+            <p className="text-sm text-gray-600"><strong>期待効果:</strong> {h.expected_effect}</p>
+            <p className="text-sm text-gray-500"><strong>ステータス:</strong> {h.status}</p>
+            <Link href={`/projects/${projectId}/hypotheses/${h.id}`} className="text-blue-600 text-sm hover:underline">
+              詳細を見る
+            </Link>
           </li>
-          <li className="flex items-center gap-2 bg-white border rounded-md p-4">
-            <FlaskConical size={18} className="text-gray-500" />
-            <span className="text-sm">LPでのCV率は10%以上か？</span>
-          </li>
-        </ul>
-      </div>
+        ))}
+      </ul>
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const color = status === '検証中'
-    ? 'bg-yellow-100 text-yellow-700'
-    : 'bg-blue-100 text-blue-700';
-  return (
-    <span className={`text-xs px-2 py-1 rounded-full font-medium ${color}`}>
-      {status}
-    </span>
-  );
+  )
 }
