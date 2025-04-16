@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function NewProjectPage() {
   const router = useRouter()
@@ -26,10 +27,14 @@ export default function NewProjectPage() {
     setLoading(true)
 
     try {
+      const session = await supabase.auth.getSession()
+      const token = session?.data.session?.access_token
+
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
           name,
@@ -60,9 +65,7 @@ export default function NewProjectPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700">
-            プロジェクト名<span className="text-red-500 ml-1">*</span>
-          </label>
+          <label className="block text-sm font-medium text-gray-700">プロジェクト名</label>
           <input
             type="text"
             value={name}
@@ -87,22 +90,20 @@ export default function NewProjectPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">説明（任意）</label>
+          <label className="block text-sm font-medium text-gray-700">説明</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="w-full p-2 border border-gray-300 rounded-md"
             rows={4}
-            placeholder="プロジェクトの目的や背景、補足情報などを入力できます。"
+            placeholder="プロジェクトの目的や背景を入力"
           />
         </div>
 
         <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-md px-4 py-3 shadow-sm">
           <label htmlFor="autoGenerate" className="flex flex-col cursor-pointer">
             <span className="text-sm font-medium text-gray-800">仮説を自動生成</span>
-            <span className="text-xs text-gray-500">
-              AIが初期仮説を自動で追加します（任意）
-            </span>
+            <span className="text-xs text-gray-500">AIが初期仮説を自動で追加します（任意）</span>
           </label>
           <input
             id="autoGenerate"
