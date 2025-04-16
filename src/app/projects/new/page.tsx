@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
 
 export default function NewProjectPage() {
   const router = useRouter()
@@ -12,6 +11,7 @@ export default function NewProjectPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [autoGenerate, setAutoGenerate] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,30 +25,30 @@ export default function NewProjectPage() {
 
     setLoading(true)
 
-    const { data: sessionData } = await supabase.auth.getSession()
-    const user = sessionData?.session?.user
+    try {
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name,
+          status,
+          description,
+          autoGenerateHypotheses: autoGenerate
+        })
+      })
 
-    if (!user) {
-      setError('ログイン情報が取得できませんでした')
-      setLoading(false)
-      return
-    }
-
-    const { error: insertError } = await supabase.from('projects').insert([
-      {
-        name,
-        status,
-        description,
-        user_id: user.id,
-      },
-    ])
-
-    if (insertError) {
-      setError('プロジェクトの作成に失敗しました')
-      console.error(insertError)
-    } else {
-      setSuccess(true)
-      router.push('/projects')
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'プロジェクトの作成に失敗しました')
+      } else {
+        setSuccess(true)
+        router.push('/projects')
+      }
+    } catch (err) {
+      console.error('API呼び出しエラー:', err)
+      setError('予期せぬエラーが発生しました')
     }
 
     setLoading(false)
@@ -60,7 +60,9 @@ export default function NewProjectPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700">プロジェクト名<span className="text-red-500 ml-1">*</span></label>
+          <label className="block text-sm font-medium text-gray-700">
+            プロジェクト名<span className="text-red-500 ml-1">*</span>
+          </label>
           <input
             type="text"
             value={name}
@@ -92,6 +94,22 @@ export default function NewProjectPage() {
             className="w-full p-2 border border-gray-300 rounded-md"
             rows={4}
             placeholder="プロジェクトの目的や背景、補足情報などを入力できます。"
+          />
+        </div>
+
+        <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-md px-4 py-3 shadow-sm">
+          <label htmlFor="autoGenerate" className="flex flex-col cursor-pointer">
+            <span className="text-sm font-medium text-gray-800">仮説を自動生成</span>
+            <span className="text-xs text-gray-500">
+              AIが初期仮説を自動で追加します（任意）
+            </span>
+          </label>
+          <input
+            id="autoGenerate"
+            type="checkbox"
+            checked={autoGenerate}
+            onChange={(e) => setAutoGenerate(e.target.checked)}
+            className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
           />
         </div>
 
