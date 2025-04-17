@@ -13,7 +13,8 @@ export async function saveHypothesisVersion(oldHypothesis: Hypothesis, validatio
 
   const nextVersion = existingVersions?.[0]?.version_number + 1 || 1
 
-  const { error } = await supabase.from('hypothesis_versions').insert({
+  // 変更点: オブジェクトを作成して、userId が存在する場合のみ updated_by に設定
+  const versionData: any = {
     hypothesis_id,
     version_number: nextVersion,
     title: oldHypothesis.title,
@@ -24,10 +25,16 @@ export async function saveHypothesisVersion(oldHypothesis: Hypothesis, validatio
     impact: oldHypothesis.impact,
     uncertainty: oldHypothesis.uncertainty,
     confidence: oldHypothesis.confidence,
-    updated_by: userId,
     based_on_validation_id: validationId || null,
     reason: reason || '',
-  })
+  }
+
+  // userId が実際に存在する場合のみ更新
+  if (userId) {
+    versionData.updated_by = userId;
+  }
+
+  const { error } = await supabase.from('hypothesis_versions').insert(versionData)
 
   return error
 }
