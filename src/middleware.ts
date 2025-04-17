@@ -1,0 +1,74 @@
+// src/middleware.ts
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+export async function middleware(request: NextRequest) {
+  // クッキーを確認
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  
+  // サーバーサイドSupabaseクライアントを初期化
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    }
+  })
+  
+  // クッキーからセッション情報を復元
+  const { pathname } = request.nextUrl
+  
+  // すでにログインページにいる場合は処理をスキップ
+  if (pathname === '/login') {
+    return NextResponse.next()
+  }
+  
+  // public assets は常にアクセス許可
+  if (
+    pathname.startsWith('/_next') || 
+    pathname.startsWith('/api') || 
+    pathname.includes('/favicon.ico')
+  ) {
+    return NextResponse.next()
+  }
+  
+  // Authorization headerからセッションを取得
+  const authHeader = request.headers.get('Authorization')
+  if (authHeader) {
+    const token = authHeader.replace('Bearer ', '')
+    const { data, error } = await supabase.auth.getUser(token)
+    if (!error && data.user) {
+      return NextResponse.next()
+    }
+  }
+  
+  // Cookieからセッション情報を取得
+  const cookieString = request.headers.get('cookie') || ''
+  const cookies = cookieString.split(';').reduce((acc, cookie) => {
+    const [key, value] = cookie.trim().split('=')
+    acc[key] = value
+    return acc
+  }, {} as Record<string, string>)
+  
+  const supabaseAuthToken = cookies['sb-access-token'] || cookies['supabase-auth-token']
+  
+  if (!supabaseAuthToken) {
+    // 認証されていない場合はログインページにリダイレクト
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+  
+  return NextResponse.next()
+}
+
+// ミドルウェアを適用するパスを指定
+export const config = {
+  matcher: [
+    /*
+     * マッチするパスのパターン:
+     * - `/login` と `/api/*` はマッチしない
+     * - その他すべてのパスがマッチする
+     */
+    '/((?!login|_next/static|_next/image|favicon.ico).*)',
+  ],
+}

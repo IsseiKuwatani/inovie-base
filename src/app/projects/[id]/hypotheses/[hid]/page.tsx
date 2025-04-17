@@ -23,7 +23,9 @@ import {
   BookOpen,
   ArrowRight,
   BarChart,
-  Info
+  Info,
+  History,
+  TrendingUp
 } from 'lucide-react'
 
 export default function HypothesisDetailPage() {
@@ -206,6 +208,25 @@ export default function HypothesisDetailPage() {
         </div>
       </div>
 
+      {/* ナビゲーションリンク - 追加部分 */}
+      <div className="flex flex-wrap gap-4">
+        <Link
+          href={`/projects/${projectId}/hypotheses/${hypothesisId}/history`}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-colors"
+        >
+          <History size={18} />
+          <span>バージョン履歴を見る</span>
+        </Link>
+        
+        <Link
+          href={`/projects/${projectId}/hypotheses/${hypothesisId}/evolution`}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg hover:bg-emerald-100 transition-colors"
+        >
+          <TrendingUp size={18} />
+          <span>進化タイムラインを見る</span>
+        </Link>
+      </div>
+
       {/* 詳細表示 */}
       <div className="grid md:grid-cols-2 gap-6">
         <DetailBlock 
@@ -272,77 +293,76 @@ export default function HypothesisDetailPage() {
           <ul className="space-y-6">
             {validations.map((v) => (
               <li key={v.id} className="bg-white border border-slate-100 rounded-xl shadow-sm relative group hover:border-indigo-200 transition-all duration-300">
-{/* ヘッダー部分 */}
-<div className="p-5 border-b border-slate-100 relative">
-  {/* 操作アイコン - 絶対位置で右上に配置 */}
-  <div className="absolute top-4 right-4 flex gap-2 z-10">
-    <Link
-      href={`/projects/${projectId}/hypotheses/${hypothesisId}/validations/${v.id}/edit`}
-      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
-      title="編集"
-    >
-      <Edit2 size={16} />
-    </Link>
-    <button
-      onClick={() => handleDelete(v.id)}
-      disabled={deleteInProgress === v.id}
-      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors disabled:opacity-50 disabled:cursor-wait"
-      title="削除"
-    >
-      {deleteInProgress === v.id ? (
-        <Loader2 size={16} className="animate-spin" />
-      ) : (
-        <Trash2 size={16} />
-      )}
-    </button>
-  </div>
+                {/* ヘッダー部分 */}
+                <div className="p-5 border-b border-slate-100 relative">
+                  {/* 操作アイコン - 絶対位置で右上に配置 */}
+                  <div className="absolute top-4 right-4 flex gap-2 z-10">
+                    <Link
+                      href={`/projects/${projectId}/hypotheses/${hypothesisId}/validations/${v.id}/edit`}
+                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                      title="編集"
+                    >
+                      <Edit2 size={16} />
+                    </Link>
+                    <button
+                      onClick={() => handleDelete(v.id)}
+                      disabled={deleteInProgress === v.id}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors disabled:opacity-50 disabled:cursor-wait"
+                      title="削除"
+                    >
+                      {deleteInProgress === v.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
+                    </button>
+                  </div>
 
-  {/* メイン情報エリア - 右側に十分なマージンを確保 */}
-  <div className="mr-20"> {/* 右側に大きめのマージンを設定 */}
-    <div className="flex items-start gap-2 mb-3">
-      {/* 検証タイプに応じたアイコン */}
-      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full ${
-        v.validation_type === '定性' ? 'bg-indigo-100 text-indigo-600' :
-        v.validation_type === '定量' ? 'bg-emerald-100 text-emerald-600' :
-        v.validation_type === '実験' ? 'bg-amber-100 text-amber-600' :
-        v.validation_type === 'PoC' ? 'bg-violet-100 text-violet-600' :
-        'bg-slate-100 text-slate-600'
-      }`}>
-        {v.validation_type === '定性' && <FileText size={16} />}
-        {v.validation_type === '定量' && <BarChart size={16} />}
-        {v.validation_type === '実験' && <FlaskConical size={16} />}
-        {v.validation_type === 'PoC' && <CheckCircle size={16} />}
-        {!['定性', '定量', '実験', 'PoC'].includes(v.validation_type) && <HelpCircle size={16} />}
-      </span>
-      
-      <div>
-        <div className="text-sm font-medium text-slate-800">{v.validation_type ? `${v.validation_type}的検証: ` : ''}{v.method}</div>
-        <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-          <Calendar size={14} className="text-indigo-500" />
-          <span>{new Date(v.created_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-          <span className="text-slate-300 mx-1">|</span>
-          <Clock size={12} className="text-indigo-400" />
-          <span>{new Date(v.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</span>
-        </div>
-      </div>
-    </div>
-    
-    {/* 確信度バッジ - 別の行に配置 */}
-    {v.confidence_level && (
-      <div className="mt-2">
-        <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full ${
-          v.confidence_level >= 4 ? 'bg-emerald-100 text-emerald-700' :
-          v.confidence_level >= 3 ? 'bg-amber-100 text-amber-700' :
-          'bg-slate-100 text-slate-700'
-        }`}>
-          確信度: {v.confidence_level}
-        </span>
-      </div>
-    )}
-  </div>
-</div>
+                  {/* メイン情報エリア - 右側に十分なマージンを確保 */}
+                  <div className="mr-20"> {/* 右側に大きめのマージンを設定 */}
+                    <div className="flex items-start gap-2 mb-3">
+                      {/* 検証タイプに応じたアイコン */}
+                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full ${
+                        v.validation_type === '定性' ? 'bg-indigo-100 text-indigo-600' :
+                        v.validation_type === '定量' ? 'bg-emerald-100 text-emerald-600' :
+                        v.validation_type === '実験' ? 'bg-amber-100 text-amber-600' :
+                        v.validation_type === 'PoC' ? 'bg-violet-100 text-violet-600' :
+                        'bg-slate-100 text-slate-600'
+                      }`}>
+                        {v.validation_type === '定性' && <FileText size={16} />}
+                        {v.validation_type === '定量' && <BarChart size={16} />}
+                        {v.validation_type === '実験' && <FlaskConical size={16} />}
+                        {v.validation_type === 'PoC' && <CheckCircle size={16} />}
+                        {!['定性', '定量', '実験', 'PoC'].includes(v.validation_type) && <HelpCircle size={16} />}
+                      </span>
+                      
+                      <div>
+                        <div className="text-sm font-medium text-slate-800">{v.validation_type ? `${v.validation_type}的検証: ` : ''}{v.method}</div>
+                        <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                          <Calendar size={14} className="text-indigo-500" />
+                          <span>{new Date(v.created_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                          <span className="text-slate-300 mx-1">|</span>
+                          <Clock size={12} className="text-indigo-400" />
+                          <span>{new Date(v.created_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* 確信度バッジ - 別の行に配置 */}
+                    {v.confidence_level && (
+                      <div className="mt-2">
+                        <span className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full ${
+                          v.confidence_level >= 4 ? 'bg-emerald-100 text-emerald-700' :
+                          v.confidence_level >= 3 ? 'bg-amber-100 text-amber-700' :
+                          'bg-slate-100 text-slate-700'
+                        }`}>
+                          確信度: {v.confidence_level}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-                   
                 {/* コンテンツ部分 */}
                 <div className="p-5">
                   <div className="space-y-5">
@@ -456,20 +476,6 @@ function DetailBlock({ label, value, icon }: { label: string; value: string; ico
       <div className="text-sm text-slate-600 whitespace-pre-wrap bg-white border border-slate-200 p-4 rounded-xl h-full">
         {value || '―'}
       </div>
-    </div>
-  )
-}
-
-function ValidationField({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
-  return (
-    <div className="pt-4">
-      <div className="flex items-center gap-1.5 mb-2">
-        {icon}
-        <p className="text-sm font-medium text-slate-700">{label}</p>
-      </div>
-      <p className="text-sm text-slate-600 whitespace-pre-wrap ml-6">
-        {value || '（未入力）'}
-      </p>
     </div>
   )
 }

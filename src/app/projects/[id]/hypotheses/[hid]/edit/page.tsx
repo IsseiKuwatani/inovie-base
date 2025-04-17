@@ -3,10 +3,64 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import { ChevronRight, ArrowLeft, Loader2, AlertCircle, HelpCircle, History } from 'lucide-react'
+import { ChevronRight, ArrowLeft, Loader2, AlertCircle, HelpCircle, History, GitBranch } from 'lucide-react'
 import Link from 'next/link'
-import { saveHypothesisVersion } from '@/utils/saveHypothesisVersion'
-import { Hypothesis } from '@/types/hypothesis'
+
+// 直接このファイル内で型定義
+interface Hypothesis {
+  id: string;
+  title: string;
+  assumption?: string;
+  solution?: string;
+  expected_effect?: string;
+  type: string;
+  status: string;
+  impact: number;
+  uncertainty: number;
+  confidence: number;
+  project_id?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// saveHypothesisVersion 関数をインラインで定義
+async function saveHypothesisVersion(oldHypothesis: Hypothesis, validationId?: string, reason?: string, userId?: string) {
+  const { id: hypothesis_id } = oldHypothesis
+
+  const { data: existingVersions } = await supabase
+    .from('hypothesis_versions')
+    .select('version_number')
+    .eq('hypothesis_id', hypothesis_id)
+    .order('version_number', { ascending: false })
+    .limit(1)
+
+  const nextVersion = existingVersions?.[0]?.version_number + 1 || 1
+
+  // userId が存在する場合のみセット、それ以外は明示的に null を設定
+  const versionData: any = {
+    hypothesis_id,
+    version_number: nextVersion,
+    title: oldHypothesis.title,
+    type: oldHypothesis.type,
+    assumption: oldHypothesis.assumption,
+    solution: oldHypothesis.solution,
+    expected_effect: oldHypothesis.expected_effect,
+    impact: oldHypothesis.impact,
+    uncertainty: oldHypothesis.uncertainty,
+    confidence: oldHypothesis.confidence,
+    based_on_validation_id: validationId || null,
+    reason: reason || '',
+  }
+
+  // userId が実際に存在する場合のみ更新
+  if (userId) {
+    versionData.updated_by = userId;
+  }
+
+  const { error } = await supabase.from('hypothesis_versions').insert(versionData)
+
+  return error
+}
 
 export default function EditHypothesisPage() {
   const { id: projectId, hid: hypothesisId } = useParams()
@@ -33,6 +87,9 @@ export default function EditHypothesisPage() {
   const [validations, setValidations] = useState<{id: string, method: string, learnings: string}[]>([])
   const [selectedValidationId, setSelectedValidationId] = useState<string>('')
   const [modificationReason, setModificationReason] = useState('')
+  
+  // 編集モードの切り替え
+  const [editMode, setEditMode] = useState<'normal' | 'version'>('normal')
 
   useEffect(() => {
     const fetchHypothesis = async () => {
@@ -68,11 +125,14 @@ export default function EditHypothesisPage() {
       const { data, error } = await supabase
         .from('validations')
         .select('id, method, learnings')
-        .eq('project_id', projectId)
+        .eq('hypothesis_id', hypothesisId)
         .order('created_at', { ascending: false })
       
-      if (!error && data) {
-        setValidations(data)
+      if (error) {
+        console.error('検証データ取得エラー:', error)
+      } else {
+        console.log('取得した検証データ:', data) // デバッグ用
+        setValidations(data || [])
       }
     }
   
@@ -104,19 +164,29 @@ export default function EditHypothesisPage() {
         throw new Error('既存のデータが取得できませんでした')
       }
 
-      // 仮説バージョンを保存
-      const versionError = await saveHypothesisVersion(
-        existingHypothesis, 
-        selectedValidationId || undefined, 
-        modificationReason || undefined, 
-        currentUserId || undefined
-      )
-      
-      if (versionError) {
-        throw new Error('バージョン履歴の保存に失敗しました: ' + versionError.message)
+      // 編集モードに応じた処理
+      if (editMode === 'version') {
+        // バージョン作成モード: 既存のデータをバージョンとして保存し、新しいバージョンとして更新
+        
+        // 入力チェック
+        if (!modificationReason) {
+          throw new Error('バージョン作成モードでは修正理由の入力が必要です')
+        }
+        
+        // 仮説バージョンを保存
+        const versionError = await saveHypothesisVersion(
+          existingHypothesis, 
+          selectedValidationId || undefined, 
+          modificationReason || undefined, 
+          currentUserId || undefined
+        )
+        
+        if (versionError) {
+          throw new Error('バージョン履歴の保存に失敗しました: ' + versionError.message)
+        }
       }
-
-      // 仮説を更新
+      
+      // 通常編集モード・バージョン作成モード共通: 仮説データの更新
       const { error } = await supabase
         .from('hypotheses')
         .update(form)
@@ -191,10 +261,49 @@ export default function EditHypothesisPage() {
 
       <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent mb-6">仮説を編集</h1>
 
+      {/* 編集モード切り替えタブ（新規追加） */}
+      <div className="flex border-b border-slate-200 mb-6">
+        <button
+          onClick={() => setEditMode('normal')}
+          className={`px-4 py-2 font-medium text-sm focus:outline-none ${
+            editMode === 'normal'
+              ? 'text-indigo-600 border-b-2 border-indigo-600'
+              : 'text-slate-600 hover:text-indigo-600'
+          }`}
+        >
+          通常編集
+        </button>
+        <button
+          onClick={() => setEditMode('version')}
+          className={`px-4 py-2 font-medium text-sm flex items-center gap-1 focus:outline-none ${
+            editMode === 'version'
+              ? 'text-indigo-600 border-b-2 border-indigo-600'
+              : 'text-slate-600 hover:text-indigo-600'
+          }`}
+        >
+          <GitBranch size={14} />
+          <span>バージョン作成</span>
+        </button>
+      </div>
+
       {error && (
         <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-700">
           <AlertCircle className="mt-0.5 flex-shrink-0" size={18} />
           <p className="text-sm">{error}</p>
+        </div>
+      )}
+
+      {/* バージョン作成モードの場合の説明（新規追加） */}
+      {editMode === 'version' && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <h3 className="font-medium text-amber-800 mb-2 flex items-center gap-2">
+            <GitBranch size={16} />
+            バージョン作成モード
+          </h3>
+          <p className="text-sm text-amber-700">
+            このモードでは編集内容が新しいバージョンとして保存されます。修正理由を必ず入力してください。
+            関連する検証がある場合は選択すると、変更の根拠として記録されます。
+          </p>
         </div>
       )}
 
@@ -294,31 +403,43 @@ export default function EditHypothesisPage() {
           </div>
         </div>
         
-        {/* バージョン管理のためのセクション追加 */}
-        <div className="border-t border-slate-100 pt-6">
-          <h3 className="text-lg font-medium text-slate-800 mb-4">修正情報（バージョン管理）</h3>
+        {/* バージョン管理のためのセクション - バージョン作成モードの場合のみ必須にする */}
+        <div className={`border-t border-slate-100 pt-6 ${editMode === 'version' ? 'opacity-100' : 'opacity-70'}`}>
+          <h3 className="text-lg font-medium text-slate-800 mb-4 flex items-center gap-2">
+            <span>修正情報</span>
+            {editMode === 'normal' && (
+              <span className="text-xs text-slate-500 font-normal">
+                （バージョン作成モードで編集する場合のみ必須）
+              </span>
+            )}
+          </h3>
           <div className="space-y-4">
             <Textarea
-              label="修正理由"
+              label={`修正理由 ${editMode === 'version' ? '（必須）' : '（任意）'}`}
               name="modificationReason"
               value={modificationReason}
               onChange={(e) => setModificationReason(e.target.value)}
               placeholder="今回の修正理由を記入してください"
+              required={editMode === 'version'}
             />
             
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">参照した検証ログ</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">参照した検証ログ（任意）</label>
               <select
                 value={selectedValidationId}
                 onChange={(e) => setSelectedValidationId(e.target.value)}
                 className="w-full p-3 border border-slate-200 rounded-lg mt-1 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 outline-none transition-all"
               >
                 <option value="">検証ログを選択（任意）</option>
-                {validations.map((validation) => (
-                  <option key={validation.id} value={validation.id}>
-                    {validation.method}: {validation.learnings.substring(0, 50)}...
-                  </option>
-                ))}
+                {validations.length > 0 ? (
+                  validations.map((validation) => (
+                    <option key={validation.id} value={validation.id}>
+                      {validation.method}: {validation.learnings?.substring(0, 50) || 'No learnings'}...
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>利用可能な検証がありません</option>
+                )}
               </select>
               <p className="text-xs text-slate-500 mt-1">この修正が特定の検証結果に基づいている場合は選択してください</p>
             </div>
@@ -335,9 +456,15 @@ export default function EditHypothesisPage() {
           <button 
             type="submit" 
             disabled={isSubmitting}
-            className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-2.5 rounded-full hover:shadow-md transition-all duration-300 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            className={`${
+              editMode === 'normal' 
+                ? 'bg-gradient-to-r from-indigo-600 to-violet-600' 
+                : 'bg-gradient-to-r from-emerald-600 to-teal-600'
+            } text-white px-5 py-2.5 rounded-full hover:shadow-md transition-all duration-300 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed`}
           >
-            {isSubmitting ? '更新中...' : '変更を保存'}
+            {isSubmitting ? '更新中...' : (
+              editMode === 'normal' ? '変更を保存' : 'バージョンを作成'
+            )}
             {!isSubmitting && <ChevronRight size={16} />}
           </button>
         </div>
