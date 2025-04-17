@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import { ChevronRight, ArrowLeft, Loader2, AlertCircle, HelpCircle } from 'lucide-react'
+import { ChevronRight, ArrowLeft, Loader2, AlertCircle, HelpCircle, History } from 'lucide-react'
 import Link from 'next/link'
+import { saveHypothesisVersion } from '@/utils/saveHypothesisVersion'
+import { Hypothesis } from '@/types/hypothesis'
 
 export default function EditHypothesisPage() {
   const { id: projectId, hid: hypothesisId } = useParams()
@@ -25,6 +27,12 @@ export default function EditHypothesisPage() {
   const [loading, setLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [existingHypothesis, setExistingHypothesis] = useState<Hypothesis | null>(null)
+  
+  // バージョン管理のための追加フィールド
+  const [validations, setValidations] = useState<{id: string, method: string, learnings: string}[]>([])
+  const [selectedValidationId, setSelectedValidationId] = useState<string>('')
+  const [modificationReason, setModificationReason] = useState('')
 
   useEffect(() => {
     const fetchHypothesis = async () => {
@@ -48,13 +56,29 @@ export default function EditHypothesisPage() {
           uncertainty: data.uncertainty ?? 3,
           confidence: data.confidence ?? 3,
         })
+        
+        // 既存の仮説データを保存
+        setExistingHypothesis(data as Hypothesis)
       }
   
       setLoading(false)
     }
+    
+    const fetchValidations = async () => {
+      const { data, error } = await supabase
+        .from('validations')
+        .select('id, method, learnings')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+      
+      if (!error && data) {
+        setValidations(data)
+      }
+    }
   
     fetchHypothesis()
-  }, [hypothesisId])
+    fetchValidations()
+  }, [hypothesisId, projectId])
   
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -72,6 +96,27 @@ export default function EditHypothesisPage() {
     setIsSubmitting(true)
 
     try {
+      // 現在のユーザーIDを取得
+      const { data } = await supabase.auth.getUser()
+      const currentUserId = data.user?.id
+      
+      if (!existingHypothesis) {
+        throw new Error('既存のデータが取得できませんでした')
+      }
+
+      // 仮説バージョンを保存
+      const versionError = await saveHypothesisVersion(
+        existingHypothesis, 
+        selectedValidationId || undefined, 
+        modificationReason || undefined, 
+        currentUserId || undefined
+      )
+      
+      if (versionError) {
+        throw new Error('バージョン履歴の保存に失敗しました: ' + versionError.message)
+      }
+
+      // 仮説を更新
       const { error } = await supabase
         .from('hypotheses')
         .update(form)
@@ -126,13 +171,23 @@ export default function EditHypothesisPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <Link
-        href={`/projects/${projectId}/hypotheses/${hypothesisId}`}
-        className="text-slate-600 hover:text-indigo-600 flex items-center gap-1 mb-6 transition-colors"
-      >
-        <ArrowLeft size={16} />
-        <span>仮説詳細に戻る</span>
-      </Link>
+      <div className="flex justify-between items-center mb-6">
+        <Link
+          href={`/projects/${projectId}/hypotheses/${hypothesisId}`}
+          className="text-slate-600 hover:text-indigo-600 flex items-center gap-1 transition-colors"
+        >
+          <ArrowLeft size={16} />
+          <span>仮説詳細に戻る</span>
+        </Link>
+        
+        <Link
+          href={`/projects/${projectId}/hypotheses/${hypothesisId}/history`}
+          className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
+        >
+          <History size={16} />
+          <span>修正履歴を見る</span>
+        </Link>
+      </div>
 
       <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent mb-6">仮説を編集</h1>
 
@@ -236,6 +291,37 @@ export default function EditHypothesisPage() {
               getButtonColor={(val) => getButtonColor('confidence', val, form.confidence)}
               numLabels={["非常に低い", "低い", "普通", "高い", "非常に高い"]}
             />
+          </div>
+        </div>
+        
+        {/* バージョン管理のためのセクション追加 */}
+        <div className="border-t border-slate-100 pt-6">
+          <h3 className="text-lg font-medium text-slate-800 mb-4">修正情報（バージョン管理）</h3>
+          <div className="space-y-4">
+            <Textarea
+              label="修正理由"
+              name="modificationReason"
+              value={modificationReason}
+              onChange={(e) => setModificationReason(e.target.value)}
+              placeholder="今回の修正理由を記入してください"
+            />
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">参照した検証ログ</label>
+              <select
+                value={selectedValidationId}
+                onChange={(e) => setSelectedValidationId(e.target.value)}
+                className="w-full p-3 border border-slate-200 rounded-lg mt-1 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 outline-none transition-all"
+              >
+                <option value="">検証ログを選択（任意）</option>
+                {validations.map((validation) => (
+                  <option key={validation.id} value={validation.id}>
+                    {validation.method}: {validation.learnings.substring(0, 50)}...
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-slate-500 mt-1">この修正が特定の検証結果に基づいている場合は選択してください</p>
+            </div>
           </div>
         </div>
         

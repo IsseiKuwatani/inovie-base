@@ -1,0 +1,33 @@
+import { supabase } from '@/lib/supabaseClient'
+import { Hypothesis } from '@/types/hypothesis'
+
+export async function saveHypothesisVersion(oldHypothesis: Hypothesis, validationId?: string, reason?: string, userId?: string) {
+  const { id: hypothesis_id } = oldHypothesis
+
+  const { data: existingVersions } = await supabase
+    .from('hypothesis_versions')
+    .select('version_number')
+    .eq('hypothesis_id', hypothesis_id)
+    .order('version_number', { ascending: false })
+    .limit(1)
+
+  const nextVersion = existingVersions?.[0]?.version_number + 1 || 1
+
+  const { error } = await supabase.from('hypothesis_versions').insert({
+    hypothesis_id,
+    version_number: nextVersion,
+    title: oldHypothesis.title,
+    type: oldHypothesis.type,
+    assumption: oldHypothesis.assumption,
+    solution: oldHypothesis.solution,
+    expected_effect: oldHypothesis.expected_effect,
+    impact: oldHypothesis.impact,
+    uncertainty: oldHypothesis.uncertainty,
+    confidence: oldHypothesis.confidence,
+    updated_by: userId,
+    based_on_validation_id: validationId || null,
+    reason: reason || '',
+  })
+
+  return error
+}
