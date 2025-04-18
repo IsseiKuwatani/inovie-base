@@ -1,36 +1,53 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function Home() {
+  const [loading, setLoading] = useState(true)
+
   useEffect(() => {
-    const checkAuth = async () => {
+    const redirectBasedOnAuth = async () => {
       try {
-        const { data } = await supabase.auth.getSession()
+        console.log('ルートページ: 認証状態チェック開始')
         
-        // セッションの有無に応じてリダイレクト
+        // セッションチェック
+        const { data, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('セッション取得エラー:', error)
+          // エラーがあってもログインページにリダイレクト
+          window.location.href = '/login'
+          return
+        }
+        
+        // リダイレクト
         if (data.session) {
+          console.log('セッションあり、プロジェクトページにリダイレクト')
           window.location.href = '/projects'
         } else {
+          console.log('セッションなし、ログインページにリダイレクト')
           window.location.href = '/login'
         }
-      } catch (error) {
-        console.error('認証エラー:', error)
+      } catch (err) {
+        console.error('予期せぬエラー:', err)
         // エラー時はログインページへ
         window.location.href = '/login'
       }
     }
     
-    // タイムアウト対策
-    const timeout = setTimeout(() => {
-      window.location.href = '/login'
-    }, 3000)
+    // タイムアウト保護
+    const timeoutId = setTimeout(() => {
+      if (loading) {
+        console.log('タイムアウト発生、ログインページに強制リダイレクト')
+        window.location.href = '/login'
+      }
+    }, 5000)
     
-    checkAuth()
+    redirectBasedOnAuth()
     
-    return () => clearTimeout(timeout)
-  }, [])
+    return () => clearTimeout(timeoutId)
+  }, [loading])
 
   return (
     <div className="min-h-screen flex justify-center items-center bg-slate-50">

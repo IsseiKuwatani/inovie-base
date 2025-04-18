@@ -9,7 +9,8 @@ import {
   CalendarDays,
   Star,
   Filter,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -33,57 +34,89 @@ export default function ProjectList() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('すべて')
   const [showFilters, setShowFilters] = useState(false)
+  const [user, setUser] = useState<any>(null)
 
+  // ログアウト時に自動リダイレクト
   useEffect(() => {
-    const fetchProjects = async () => {
-      setLoading(true)
-      setErrorMsg('')
-
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-      const user = sessionData?.session?.user
-
-      if (!user || sessionError) {
-        setErrorMsg('ログイン情報の取得に失敗しました')
-        setLoading(false)
-        return
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        window.location.href = '/login'
       }
+    })
+    
+    // 初期データ取得
+    const fetchInitialData = async () => {
+      try {
+        setLoading(true)
+        const { data: userData } = await supabase.auth.getUser()
+        
+        if (userData.user) {
+          setUser(userData.user)
+          fetchProjects(userData.user.id)
+        }
+      } catch (err) {
+        console.error('データ取得エラー:', err)
+        setErrorMsg('データの読み込みに失敗しました')
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchInitialData()
+  }, [])
+
+  // プロジェクト一覧の取得
+  const fetchProjects = async (userId: string) => {
+    try {
+      console.log('プロジェクト一覧の取得開始')
+      setLoading(true)
 
       const { data, error } = await supabase
         .from('projects')
         .select('*, hypotheses(count)')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('読み込みエラー:', error)
+        console.error('プロジェクト取得エラー:', error)
         setErrorMsg('プロジェクトの読み込みに失敗しました')
       } else {
+        console.log(`${data.length}件のプロジェクトを取得`)
         const enriched = data.map((p: any) => ({
           ...p,
           hypothesis_count: p.hypotheses[0]?.count ?? 0
         }))
         setProjects(enriched)
       }
-
+    } catch (err) {
+      console.error('プロジェクト取得中のエラー:', err)
+      setErrorMsg('予期せぬエラーが発生しました')
+    } finally {
       setLoading(false)
     }
-
-    fetchProjects()
-  }, [])
+  }
 
   const handleDelete = async (id: string) => {
     const confirm = window.confirm('このプロジェクトを削除します。元に戻すことはできません。本当によろしいですか？')
     if (!confirm) return
 
     setDeletingId(id)
-    const { error } = await supabase.from('projects').delete().eq('id', id)
-    if (error) {
-      console.error('削除失敗:', error)
-      alert('削除に失敗しました')
-    } else {
-      setProjects((prev) => prev.filter((p) => p.id !== id))
+    
+    try {
+      const { error } = await supabase.from('projects').delete().eq('id', id)
+      
+      if (error) {
+        console.error('削除失敗:', error)
+        alert('削除に失敗しました')
+      } else {
+        setProjects((prev) => prev.filter((p) => p.id !== id))
+      }
+    } catch (err) {
+      console.error('削除処理中のエラー:', err)
+      alert('削除処理中にエラーが発生しました')
+    } finally {
+      setDeletingId(null)
     }
-    setDeletingId(null)
   }
 
   const toggleFavorite = (id: string) => {
@@ -106,6 +139,29 @@ export default function ProjectList() {
     setStatusFilter('すべて')
   }
 
+  // エラー状態
+  if (errorMsg && !user) {
+    return (
+      <div className="min-h-screen flex justify-center items-center bg-slate-50 px-4">
+        <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-100 max-w-md w-full">
+          <div className="text-rose-600 mb-4 flex justify-center">
+            <AlertCircle size={48} />
+          </div>
+          <h2 className="text-xl font-bold text-gray-800 text-center mb-2">エラー</h2>
+          <p className="text-gray-600 text-center mb-6">{errorMsg}</p>
+          <div className="flex justify-center">
+            <button 
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              再読み込み
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="flex items-center justify-between">
@@ -120,6 +176,16 @@ export default function ProjectList() {
           <span>新規プロジェクト作成</span>
         </Link>
       </div>
+
+      {/* エラーメッセージ（認証成功後のエラー） */}
+      {errorMsg && user && (
+        <div className="bg-rose-50 border-l-4 border-rose-500 p-4 rounded-lg">
+          <div className="flex">
+            <AlertCircle className="text-rose-500 mr-2 flex-shrink-0" size={20} />
+            <p className="text-sm text-rose-700">{errorMsg}</p>
+          </div>
+        </div>
+      )}
 
       {/* フィルターセクション */}
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
@@ -188,8 +254,6 @@ export default function ProjectList() {
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
         </div>
-      ) : errorMsg ? (
-        <div className="text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-4 text-sm">{errorMsg}</div>
       ) : sortedProjects.length === 0 ? (
         <div className="text-center py-16 bg-slate-50 rounded-2xl border border-slate-100">
           <svg className="mx-auto h-16 w-16 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

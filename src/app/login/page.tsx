@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -11,45 +11,141 @@ export default function LoginPage() {
   const [message, setMessage] = useState('')
   const [errorLog, setErrorLog] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [isCheckingSession, setIsCheckingSession] = useState(true)
+  const [redirectInProgress, setRedirectInProgress] = useState(false)
+
+  // セッションチェックは1回だけ行う
+  useEffect(() => {
+    let mounted = true;
+    let redirectTimeoutId: NodeJS.Timeout | null = null;
+
+    const checkSession = async () => {
+      if (!mounted || redirectInProgress) return;
+
+      try {
+        console.log('セッションチェック開始...');
+        setIsCheckingSession(true);
+        
+        // Supabaseからセッション情報を取得
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('セッションチェックエラー:', error);
+          setIsCheckingSession(false);
+          return;
+        }
+
+        console.log('セッションチェック結果:', {
+          hasSession: !!data.session,
+          user: data.session?.user?.email
+        });
+
+        // 既にログイン済みで、かつURLにリダイレクトパラメータがない場合のみリダイレクト
+        if (data.session && mounted) {
+          // リダイレクトループ防止のためURLをチェック
+          const url = new URL(window.location.href);
+          const fromRedirect = url.searchParams.get('from_redirect');
+          
+          if (!fromRedirect) {
+            console.log('ログイン済み、プロジェクトページにリダイレクト');
+            setMessage('既にログインしています。プロジェクトページに移動します...');
+            setRedirectInProgress(true);
+            
+            // 一定時間後にリダイレクト
+            redirectTimeoutId = setTimeout(() => {
+              if (mounted) {
+                // URLにフラグを追加してリダイレクトループを防止
+                window.location.href = '/projects?from_login=1';
+              }
+            }, 1500);
+          } else {
+            console.log('リダイレクトループ検出、リダイレクトをスキップ');
+            setIsCheckingSession(false);
+          }
+        } else {
+          // セッションなし、ログインフォームを表示
+          setIsCheckingSession(false);
+        }
+      } catch (err) {
+        console.error('セッション確認中にエラー:', err);
+        setIsCheckingSession(false);
+      }
+    };
+
+    checkSession();
+
+    // クリーンアップ関数
+    return () => {
+      mounted = false;
+      if (redirectTimeoutId) {
+        clearTimeout(redirectTimeoutId);
+      }
+    };
+  }, [redirectInProgress]);
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (loading) return
+    e.preventDefault();
+    if (loading || redirectInProgress) return;
     
-    setLoading(true)
-    setErrorLog('')
-    setMessage('')
+    setLoading(true);
+    setErrorLog('');
+    setMessage('');
 
     try {
+      console.log('ログイン試行:', email);
+      
       // ログイン処理
       const { data, error } = await supabase.auth.signInWithPassword({ 
         email, 
         password 
-      })
+      });
 
       if (error) {
-        console.error('ログインエラー:', error)
+        console.error('ログインエラー:', error);
         if (error.message === 'Invalid login credentials') {
-          setErrorLog('メールアドレスまたはパスワードが間違っています。')
+          setErrorLog('メールアドレスまたはパスワードが間違っています。');
         } else {
-          setErrorLog(`ログインに失敗しました: ${error.message}`)
+          setErrorLog(`ログインに失敗しました: ${error.message}`);
         }
-        setLoading(false)
+        setLoading(false);
       } else {
-        setMessage('ログイン成功！リダイレクトします...')
+        console.log('ログイン成功、ユーザー:', data.user?.email);
+        setMessage('ログイン成功！プロジェクトページに移動します...');
+        setRedirectInProgress(true);
         
-        // 直接プロジェクトページに移動
-        window.location.href = '/projects'
+        // リダイレクト前に短い遅延を設定
+        setTimeout(() => {
+          window.location.href = '/projects?from_login=1';
+        }, 1500);
       }
     } catch (err: any) {
-      console.error('予期せぬエラー:', err)
-      setErrorLog(`予期せぬエラーが発生しました: ${err.message || err}`)
-      setLoading(false)
+      console.error('予期せぬエラー:', err);
+      setErrorLog(`予期せぬエラーが発生しました: ${err.message || err}`);
+      setLoading(false);
     }
-  }
+  };
 
   const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword)
+    setShowPassword(!showPassword);
+  };
+
+  // セッションチェック中または遷移中はローディング表示
+  if (isCheckingSession || redirectInProgress) {
+    return (
+      <div className="min-h-screen flex justify-center items-center bg-slate-50">
+        <div className="text-center">
+          <div className="animate-spin h-10 w-10 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <p className="text-slate-600">
+            {redirectInProgress 
+              ? 'プロジェクトページに移動中...' 
+              : 'ログイン状態を確認中...'}
+          </p>
+          {message && (
+            <p className="mt-2 text-indigo-600">{message}</p>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
