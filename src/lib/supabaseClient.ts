@@ -1,3 +1,4 @@
+// lib/supabaseClient.js
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -9,4 +10,12 @@ if (!supabaseUrl || !supabaseAnonKey) {
     Key: ${supabaseAnonKey ? 'Set' : 'Not set'}`);
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storageKey: 'supabase-auth',
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  }
+});

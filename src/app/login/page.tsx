@@ -1,80 +1,49 @@
-// src/app/login/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
+import { useState } from 'react'
 import { Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [errorLog, setErrorLog] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [redirecting, setRedirecting] = useState(false)
-
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data } = await supabase.auth.getSession()
-        if (data.session?.user) {
-          router.push('/projects') // ログイン済みの場合はプロジェクト一覧へ
-        }
-      } catch (err) {
-        console.error('セッションチェックエラー:', err)
-      }
-    }
-    checkSession()
-  }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (redirecting) return // 既にリダイレクト中の場合は処理をスキップ
+    if (loading) return
     
     setLoading(true)
     setErrorLog('')
     setMessage('')
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      // ログイン処理
+      const { data, error } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password 
+      })
 
       if (error) {
+        console.error('ログインエラー:', error)
         if (error.message === 'Invalid login credentials') {
           setErrorLog('メールアドレスまたはパスワードが間違っています。')
         } else {
-          setErrorLog('ログインに失敗しました。もう一度お試しください。')
+          setErrorLog(`ログインに失敗しました: ${error.message}`)
         }
         setLoading(false)
       } else {
         setMessage('ログイン成功！リダイレクトします...')
         
-        setRedirecting(true)
-        
-        // 確実にリダイレクトを実行
-        try {
-          // セッション情報を再取得して確認
-          const { data } = await supabase.auth.getSession()
-          if (data.session) {
-            // 明示的にブラウザの location を使用してリダイレクト
-            window.location.href = '/projects'
-          } else {
-            // 念のため Next.js のルーターも使用
-            router.push('/projects')
-          }
-        } catch (err) {
-          console.error('リダイレクトエラー:', err)
-          // 最後の手段として setTimeout を使用
-          setTimeout(() => {
-            window.location.href = '/projects'
-          }, 1000)
-        }
+        // 直接プロジェクトページに移動
+        window.location.href = '/projects'
       }
-    } catch (err) {
-      console.error('ログインエラー:', err)
-      setErrorLog('予期せぬエラーが発生しました。')
+    } catch (err: any) {
+      console.error('予期せぬエラー:', err)
+      setErrorLog(`予期せぬエラーが発生しました: ${err.message || err}`)
       setLoading(false)
     }
   }
@@ -85,7 +54,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full flex">
-      {/* 左側のイメージセクション - さらにトーンダウンした色合いに */}
+      {/* 左側のイメージセクション */}
       <div className="hidden lg:flex lg:w-1/2 bg-indigo-100 justify-center items-center relative">
         {/* グリッドオーバーレイ */}
         <div className="absolute inset-0 bg-indigo-500 opacity-10">
@@ -144,7 +113,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  disabled={loading || redirecting}
+                  disabled={loading}
                   className="w-full border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 transition-all outline-none disabled:bg-slate-50 disabled:text-slate-500"
                 />
               </div>
@@ -158,13 +127,13 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    disabled={loading || redirecting}
+                    disabled={loading}
                     className="w-full border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 transition-all outline-none disabled:bg-slate-50 disabled:text-slate-500"
                   />
                   <button
                     type="button"
                     onClick={togglePasswordVisibility}
-                    disabled={loading || redirecting}
+                    disabled={loading}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-700 disabled:text-slate-300"
                   >
                     {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -183,13 +152,13 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={loading || redirecting}
+                disabled={loading}
                 className="w-full bg-indigo-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-indigo-700 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70"
               >
-                {loading || redirecting ? (
+                {loading ? (
                   <>
                     <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
-                    <span>{redirecting ? 'リダイレクト中...' : 'ログイン中...'}</span>
+                    <span>ログイン中...</span>
                   </>
                 ) : (
                   <>
