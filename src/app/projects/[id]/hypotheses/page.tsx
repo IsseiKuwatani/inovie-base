@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
 import classNames from 'classnames'
 import { motion } from 'framer-motion'
+import { Plus, X } from 'lucide-react'
 
 type Hypothesis = {
   id: string
@@ -21,6 +22,13 @@ type Hypothesis = {
 
 type ViewMode = 'grid' | 'list'
 type SortOption = 'priority' | 'impact' | 'uncertainty' | 'created_at'
+
+type HypothesisLink = {
+  id: string
+  from_id: string
+  to_id: string
+  label: string | null
+}
 
 export default function HypothesisList() {
   const { id: projectId } = useParams()
@@ -41,23 +49,53 @@ export default function HypothesisList() {
   const [availableStatuses, setAvailableStatuses] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [projectInfo, setProjectInfo] = useState<{ name: string; description: string | null } | null>(null)
+  
+  // 関連付け機能用の状態
+  const [showLinkForm, setShowLinkForm] = useState(false)
+  const [fromHypothesis, setFromHypothesis] = useState<string>('')
+  const [toHypothesis, setToHypothesis] = useState<string>('')
+  const [linkLabel, setLinkLabel] = useState<string>('')
+  const [links, setLinks] = useState<HypothesisLink[]>([])
+  const [isLoadingLinks, setIsLoadingLinks] = useState(false)
+  const [linkSuccess, setLinkSuccess] = useState(false)
 
-useEffect(() => {
-  const fetchProject = async () => {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('name, description')
-      .eq('id', projectId)
-      .single()
+  useEffect(() => {
+    const fetchProject = async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('name, description')
+        .eq('id', projectId)
+        .single()
 
-    if (!error && data) {
-      setProjectInfo(data)
+      if (!error && data) {
+        setProjectInfo(data)
+      }
     }
-  }
 
-  fetchProject()
-}, [projectId])
+    fetchProject()
+  }, [projectId])
 
+  // 仮説リンクを取得する
+  useEffect(() => {
+    const fetchLinks = async () => {
+      if (hypotheses.length > 0) {
+        setIsLoadingLinks(true)
+        const hypothesisIds = hypotheses.map(h => h.id)
+        
+        const { data: linksData, error } = await supabase
+          .from('hypothesis_links')
+          .select('*')
+          .or(`from_id.in.(${hypothesisIds.join(',')}),to_id.in.(${hypothesisIds.join(',')})`)
+
+        if (!error && linksData) {
+          setLinks(linksData)
+        }
+        setIsLoadingLinks(false)
+      }
+    }
+
+    fetchLinks()
+  }, [hypotheses])
 
   useEffect(() => {
     const fetchHypotheses = async () => {
@@ -91,6 +129,43 @@ useEffect(() => {
 
     fetchHypotheses()
   }, [projectId])
+
+  // 仮説リンクを追加する関数
+  const addHypothesisLink = async () => {
+    if (!fromHypothesis || !toHypothesis) return
+    
+    setIsLoadingLinks(true)
+    const { error } = await supabase
+      .from('hypothesis_links')
+      .insert({
+        from_id: fromHypothesis,
+        to_id: toHypothesis,
+        label: linkLabel || null
+      })
+    
+    if (!error) {
+      // 成功したらフォームをリセットして、リンクを再取得
+      setLinkSuccess(true)
+      setTimeout(() => setLinkSuccess(false), 3000)
+      
+      // リンクデータを再取得
+      const hypothesisIds = hypotheses.map(h => h.id)
+      const { data: linksData } = await supabase
+        .from('hypothesis_links')
+        .select('*')
+        .or(`from_id.in.(${hypothesisIds.join(',')}),to_id.in.(${hypothesisIds.join(',')})`)
+      
+      if (linksData) {
+        setLinks(linksData)
+      }
+      
+      // フォームをリセット
+      setFromHypothesis('')
+      setToHypothesis('')
+      setLinkLabel('')
+    }
+    setIsLoadingLinks(false)
+  }
 
   // フィルタリングとソートを適用
   useEffect(() => {
@@ -202,29 +277,153 @@ useEffect(() => {
     show: { y: 0, opacity: 1 }
   }
 
+  // 指定した仮説と関連する仮説の数を取得
+  const getRelatedHypothesesCount = (hypothesisId: string) => {
+    return links.filter(link => link.from_id === hypothesisId || link.to_id === hypothesisId).length
+  }
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-     {projectInfo && (
-  <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-6 space-y-3 hover:shadow-md transition-all duration-300">
-    <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">{projectInfo.name}</h2>
-    {projectInfo.description && (
-      <p className="text-slate-600 text-sm">{projectInfo.description}</p>
-    )}
-  </div>
-)}
+      {projectInfo && (
+        <div className="bg-white border border-slate-100 rounded-2xl shadow-sm p-6 space-y-3 hover:shadow-md transition-all duration-300">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">{projectInfo.name}</h2>
+          {projectInfo.description && (
+            <p className="text-slate-600 text-sm">{projectInfo.description}</p>
+          )}
+        </div>
+      )}
 
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">仮説一覧</h1>
-        <Link
-          href={`/projects/${projectId}/hypotheses/new`}
-          className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-2.5 rounded-full hover:shadow-lg hover:translate-y-[-2px] transition-all duration-300 flex items-center gap-2"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-          </svg>
-          <span>仮説を追加</span>
-        </Link>
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={() => setShowLinkForm(true)}
+            className="border border-indigo-200 bg-indigo-50 text-indigo-700 px-5 py-2.5 rounded-full hover:bg-indigo-100 transition-all duration-300 flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            <span>仮説間の関連付け</span>
+          </button>
+          <Link
+            href={`/projects/${projectId}/hypotheses/tree-map`}
+            className="border border-violet-200 bg-violet-50 text-violet-700 px-5 py-2.5 rounded-full hover:bg-violet-100 transition-all duration-300 flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+            </svg>
+            <span>ツリーマップを見る</span>
+          </Link>
+          <Link
+            href={`/projects/${projectId}/hypotheses/new`}
+            className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-2.5 rounded-full hover:shadow-lg hover:translate-y-[-2px] transition-all duration-300 flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+            </svg>
+            <span>仮説を追加</span>
+          </Link>
+        </div>
       </div>
+
+      {/* 関連付けモーダル */}
+      {showLinkForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-slate-800">仮説間の関連付けを追加</h3>
+              <button 
+                onClick={() => setShowLinkForm(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            {linkSuccess && (
+              <div className="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg p-3 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                関連付けが正常に追加されました
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-1">元の仮説</label>
+              <select
+                value={fromHypothesis}
+                onChange={(e) => {
+                  setFromHypothesis(e.target.value)
+                  if (e.target.value === toHypothesis) setToHypothesis('')
+                }}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">仮説を選択</option>
+                {hypotheses.map(h => (
+                  <option key={`from-${h.id}`} value={h.id}>{h.title}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-1">関連する仮説</label>
+              <select
+                value={toHypothesis}
+                onChange={(e) => setToHypothesis(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={!fromHypothesis}
+              >
+                <option value="">仮説を選択</option>
+                {hypotheses
+                  .filter(h => h.id !== fromHypothesis)
+                  .map(h => (
+                    <option key={`to-${h.id}`} value={h.id}>{h.title}</option>
+                  ))
+                }
+              </select>
+            </div>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-700 mb-1">関連ラベル（任意）</label>
+              <input
+                type="text"
+                value={linkLabel}
+                onChange={(e) => setLinkLabel(e.target.value)}
+                placeholder="例: 依存関係、派生、代替案など"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            
+            <div className="flex justify-end">
+              <button
+                onClick={addHypothesisLink}
+                disabled={!fromHypothesis || !toHypothesis || isLoadingLinks}
+                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg ${
+                  !fromHypothesis || !toHypothesis || isLoadingLinks
+                    ? 'bg-indigo-300 cursor-not-allowed'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                }`}
+              >
+                {isLoadingLinks ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>処理中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={16} />
+                    <span>関連付けを追加</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-12">
@@ -421,6 +620,7 @@ useEffect(() => {
                     <tr>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">仮説</th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">優先度</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">関連付け</th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">影響度</th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">不確実性</th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">確信度</th>
@@ -435,6 +635,7 @@ useEffect(() => {
                       const priority = h.priority!
                       const priorityLabel = getPriorityLabel(priority)
                       const priorityColor = getPriorityColor(priority)
+                      const relatedCount = getRelatedHypothesesCount(h.id)
 
                       return (
                         <motion.tr 
@@ -449,6 +650,15 @@ useEffect(() => {
                             <span className={classNames('inline-flex items-center text-xs px-2.5 py-1 rounded-full font-medium', priorityColor)}>
                               {priorityLabel} ({priority})
                             </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {relatedCount > 0 ? (
+                              <span className="inline-flex items-center text-xs px-2.5 py-1 rounded-full font-medium bg-violet-100 text-violet-700">
+                                {relatedCount}件
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400">なし</span>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-slate-600">{h.impact}</div>
@@ -499,6 +709,7 @@ useEffect(() => {
                 const priority = h.priority!
                 const priorityLabel = getPriorityLabel(priority)
                 const priorityColor = getPriorityColor(priority)
+                const relatedCount = getRelatedHypothesesCount(h.id)
 
                 return (
                   <motion.li
@@ -513,7 +724,17 @@ useEffect(() => {
                           優先度 {priorityLabel}
                         </span>
                       </div>
-                      <div className="text-xs text-slate-500">スコア: {priority}</div>
+                      <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <span>スコア: {priority}</span>
+                        {relatedCount > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                            </svg>
+                            関連付け{relatedCount}件
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2 text-xs">

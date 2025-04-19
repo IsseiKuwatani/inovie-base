@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
 import {
   MapPinned, FlaskConical, Plus, LayoutGrid, TrendingUp,
-  BarChart3, FileText, ClipboardList, Loader2
+  BarChart3, FileText, ClipboardList, Loader2, Map as MapIcon
 } from 'lucide-react'
 
 export default function ProjectDashboard() {
@@ -123,8 +123,15 @@ export default function ProjectDashboard() {
           className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-full hover:border-indigo-200 hover:text-indigo-700 transition-colors text-sm shadow-sm"
         >
           <MapPinned size={16} />
-          マップで表示
+          優先マップで表示
         </Link>
+        <Link
+  href={`/projects/${projectId}/hypotheses/tree-map`}
+  className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-full hover:border-indigo-200 hover:text-indigo-700 transition-colors text-sm shadow-sm"
+>
+  <MapIcon size={16} />
+  ツリーマップ
+</Link>
         <Link
           href={`/projects/${projectId}/hypotheses/new`}
           className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-full hover:shadow-lg hover:translate-y-[-1px] transition-all duration-300 text-sm shadow-sm"
@@ -132,6 +139,8 @@ export default function ProjectDashboard() {
           <Plus size={16} />
           仮説を追加
         </Link>
+
+        
       </section>
 
       {/* 最新の仮説一覧（3件だけ） */}
