@@ -8,7 +8,7 @@ import React from 'react'
 import { 
   X, Map as MapIcon, AlertTriangle, CheckCircle, XCircle, 
   HelpCircle, ArrowUpRight, ChevronDown, ChevronUp, 
-  Link as LinkIcon, ArrowLeft, ExternalLink
+  Link as LinkIcon, ArrowLeft, ExternalLink, Layers, List
 } from 'lucide-react'
 
 type Hypothesis = {
@@ -57,6 +57,8 @@ export default function HypothesisTreeMap() {
   const [treeData, setTreeData] = useState<Record<string, HypothesisNode>>({})
   const [rootNodes, setRootNodes] = useState<string[]>([])
   const detailsRef = React.useRef<HTMLDivElement>(null)
+  // 表示モードの状態を追加 (list: リスト表示, block: ブロック表示)
+  const [viewMode, setViewMode] = useState<'list' | 'block'>('list')
 
   // プロジェクト情報を取得する
   useEffect(() => {
@@ -230,7 +232,7 @@ export default function HypothesisTreeMap() {
     return date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' })
   }
 
-  // ツリーの再帰的なレンダリング
+  // ツリーの再帰的なレンダリング（リスト表示モード）
   const renderTree = (nodeId: string, level: number = 0, path: string[] = []) => {
     const node = treeData[nodeId]
     if (!node) return null
@@ -317,6 +319,127 @@ export default function HypothesisTreeMap() {
     )
   }
 
+  // ブロックツリー表示モードの再帰的レンダリング関数
+  const renderBlockTree = (nodeId: string, level: number = 0, path: string[] = []) => {
+    const node = treeData[nodeId]
+    if (!node) return null
+    
+    // ループを防ぐためのパス検証
+    if (path.includes(nodeId)) {
+      return (
+        <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center">
+          <div className="px-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-amber-700 text-sm">
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={16} />
+              <span>循環参照</span>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    
+    const phase = getPhase(node.data.status)
+    const colors = getPhaseColors(phase)
+    const newPath = [...path, nodeId]
+    
+    // 優先度計算
+    const priority = node.data.impact * node.data.uncertainty
+    
+    // ブロックのサイズを優先度に基づいて計算（最小値から最大値の範囲で）
+    const minSize = 140
+    const maxSize = 220
+    const size = minSize + (priority / 25) * (maxSize - minSize)
+    
+    // 子ノードがある場合の配置計算
+    const childCount = node.children.length
+    const gridClass = childCount <= 1 ? 'grid-cols-1' : 
+                      childCount <= 4 ? 'grid-cols-2' : 'grid-cols-3'
+    
+    return (
+      <div className="relative mb-8">
+        {/* ノードブロック */}
+        <div 
+          className={`relative mx-auto border-2 ${colors.border} rounded-xl p-4 ${colors.bg} hover:shadow-lg transition-all cursor-pointer flex flex-col justify-between`}
+          style={{ 
+            width: `${size}px`, 
+            height: `${size}px`,
+          }}
+          onClick={() => setSelected(selected?.id === nodeId ? null : node.data)}
+        >
+          <div className="flex justify-between items-start">
+            <div className="flex-1">
+              <h3 className={`font-medium ${colors.text} text-base line-clamp-2`}>{node.data.title}</h3>
+              <div className="flex flex-wrap gap-1 mt-2 text-xs">
+                <span className={`px-2 py-0.5 rounded-full ${getStatusColor(node.data.status)} text-white`}>
+                  {node.data.status}
+                </span>
+              </div>
+            </div>
+            <Link
+              href={`/projects/${projectId}/hypotheses/${nodeId}`}
+              className="p-1 text-indigo-500 hover:bg-indigo-50 rounded-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ExternalLink size={14} />
+            </Link>
+          </div>
+          
+          <div className="mt-auto">
+            <div className="text-xs line-clamp-2 text-slate-600 mb-2">
+              {node.data.assumption || ''}
+            </div>
+            
+            <div className="flex justify-between items-center text-xs text-slate-500">
+              <div className="flex items-center gap-1">
+                <span className="font-semibold">優先度:</span> {priority}
+              </div>
+              {(node.children.length > 0 || node.parents.length > 0) && (
+                <div className="flex items-center gap-1 text-violet-600">
+                  <LinkIcon size={10} />
+                  {node.children.length + node.parents.length}
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* フェーズ表示 */}
+          <div className="absolute -top-3 -right-3 px-2 py-0.5 rounded-full border-2 text-xs font-bold bg-white border-indigo-200 text-indigo-700">
+            {phase}
+          </div>
+        </div>
+        
+        {/* 子ノードの表示（存在する場合のみ） */}
+        {node.children.length > 0 && (
+          <div className={`mt-12 grid ${gridClass} gap-6 relative`}>
+            {/* 接続線 */}
+            <div className="absolute left-1/2 -top-8 w-0.5 h-8 bg-indigo-200"></div>
+            
+            {/* 横線（2つ以上の子がある場合） */}
+            {node.children.length > 1 && (
+              <div className="absolute left-0 right-0 -top-4 h-0.5 bg-indigo-200"></div>
+            )}
+            
+            {node.children.map((child, index) => (
+              <div key={child.id} className="relative flex flex-col items-center">
+                {/* 縦線 */}
+                <div className="absolute left-1/2 -top-4 w-0.5 h-4 bg-indigo-200"></div>
+                
+                {/* 関連ラベル */}
+                {child.label && (
+                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 z-10 inline-block px-2 py-0.5 bg-violet-100 text-violet-700 text-xs rounded-full border border-violet-200 whitespace-nowrap">
+                    {child.label}
+                  </div>
+                )}
+                
+                {renderBlockTree(child.id, level + 1, newPath)}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
       {/* プロジェクト&ナビゲーション */}
@@ -343,7 +466,25 @@ export default function HypothesisTreeMap() {
           </p>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {/* 表示モード切替ボタン */}
+          <div className="bg-white border border-slate-200 rounded-md flex overflow-hidden shadow-sm mr-2">
+            <button
+              className={`p-2.5 flex items-center gap-1.5 text-sm ${viewMode === 'list' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'}`}
+              onClick={() => setViewMode('list')}
+            >
+              <List size={16} />
+              <span className="hidden sm:inline">リスト表示</span>
+            </button>
+            <button
+              className={`p-2.5 flex items-center gap-1.5 text-sm ${viewMode === 'block' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'}`}
+              onClick={() => setViewMode('block')}
+            >
+              <Layers size={16} />
+              <span className="hidden sm:inline">ブロック表示</span>
+            </button>
+          </div>
+
           <Link
             href={`/projects/${projectId}/hypotheses/new`}
             className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-2.5 rounded-full hover:shadow-lg hover:translate-y-[-2px] transition-all duration-300 flex items-center gap-2"
@@ -446,19 +587,31 @@ export default function HypothesisTreeMap() {
         </div>
       ) : (
         <div className="border border-slate-200 rounded-2xl bg-white p-6 shadow-sm">
-          <div className="overflow-x-auto">
-            <div className="min-w-[800px] pb-4">
-              {/* ツリー表示 */}
+          <div className={`overflow-x-auto ${viewMode === 'block' ? 'overflow-y-auto' : ''}`}>
+            <div className={`${viewMode === 'list' ? 'min-w-[800px]' : ''} pb-4`}>
+              {/* ツリー表示 (viewModeに基づいて表示方法を切り替え) */}
               {rootNodes.length > 0 ? (
-                <div>
-                  {rootNodes.map(nodeId => renderTree(nodeId))}
-                </div>
+                viewMode === 'list' ? (
+                  // リスト表示モード
+                  <div>
+                    {rootNodes.map(nodeId => renderTree(nodeId))}
+                  </div>
+                ) : (
+                  // ブロック表示モード
+                  <div className="py-8 flex flex-col items-center">
+                    {rootNodes.map(nodeId => (
+                      <div key={nodeId} className="mb-12 max-w-full">
+                        {renderBlockTree(nodeId)}
+                      </div>
+                    ))}
+                  </div>
+                )
               ) : (
                 <div className="text-center py-8 bg-amber-50 rounded-xl border border-amber-100">
                   <AlertTriangle className="mx-auto h-12 w-12 text-amber-500" />
                   <h3 className="mt-4 text-xl font-medium text-amber-700">ツリー構造を構築できません</h3>
                   <p className="mt-2 text-amber-600 max-w-lg mx-auto">
-                    仮説間の関連付けはありますが、ツリーのルートとなる仮説（親を持たない仮説）が見つかりません。
+                  仮説間の関連付けはありますが、ツリーのルートとなる仮説（親を持たない仮説）が見つかりません。
                     循環参照がある可能性があります。
                   </p>
                 </div>
@@ -601,7 +754,6 @@ export default function HypothesisTreeMap() {
                                 </Link>
                               </li>
                             ))}
-
                           </ul>
                         </div>
                       )}
@@ -631,6 +783,31 @@ export default function HypothesisTreeMap() {
         }
         .animate-slideDown {
           animation: slideDown 0.3s ease-out forwards;
+        }
+        
+        /* ブロックツリーモード用のアニメーション */
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scaleIn {
+          from { transform: scale(0.95); }
+          to { transform: scale(1); }
+        }
+        .ht-block-node {
+          animation: fadeIn 0.5s ease-out, scaleIn 0.5s ease-out;
+        }
+        
+        /* 連結線アニメーション */
+        @keyframes drawLine {
+          from { height: 0; width: 0; }
+          to { height: 100%; width: 100%; }
+        }
+        .ht-line-v {
+          animation: drawLine 0.5s ease-out forwards;
+        }
+        .ht-line-h {
+          animation: drawLine 0.5s ease-out forwards;
         }
       `}</style>
     </div>
