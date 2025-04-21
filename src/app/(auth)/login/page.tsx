@@ -149,7 +149,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen w-full flex">
+    <div className="min-h-screen w-full flex"> 
       {/* 左側のイメージセクション */}
       <div className="hidden lg:flex lg:w-1/2 bg-indigo-100 justify-center items-center relative">
         {/* グリッドオーバーレイ */}
