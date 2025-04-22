@@ -15,7 +15,8 @@ import {
   LogOut,
   ChevronRight,
   Network,
-  Layers // 追加: リーンキャンバス用アイコン
+  Clock,
+  Layers
 } from 'lucide-react'
 
 export default function ProjectSidebar({ projectId }: { projectId: string }) {
@@ -33,6 +34,8 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
       setActiveSection('map')
     } else if (pathname?.includes('/hypotheses')) {
       setActiveSection('hypotheses')
+    } else if (pathname?.includes('/timeline')) {
+      setActiveSection('timeline')
     
     } else if (pathname?.includes('/settings')) {
       setActiveSection('settings')
@@ -189,6 +192,13 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
     >
       リーンキャンバス
     </ProjectNavItem>
+            <ProjectNavItem 
+              href={`/projects/${projectId}/timeline`}
+              icon={<Clock size={18} />}
+              isActive={activeSection === 'timeline'}
+            >
+              タイムライン
+            </ProjectNavItem>
           </div>
         </div>
         
