@@ -1,37 +1,23 @@
-// src/app/layout.tsx
 'use client'
 
-import Link from 'next/link'
 import './globals.css'
-import { LayoutDashboard, FolderKanban, FlaskConical, Settings, LogOut, User } from 'lucide-react'
-import SidebarFooter from '@/components/SidebarFooter'
-import Breadcrumbs from '@/components/Breadcrumbs'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import GlobalSidebar from '@/components/GlobalSidebar'  // グローバルサイドバーコンポーネント
+import ProjectSidebar from '@/components/ProjectSidebar'  // プロジェクトサイドバーコンポーネント
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [checkingAuth, setCheckingAuth] = useState(true)
-  const [activePage, setActivePage] = useState('')
 
   // ログインページかどうかを判定
   const isLoginPage = pathname === '/login'
-
-  // アクティブなページを設定
-  useEffect(() => {
-    if (pathname.startsWith('/projects')) {
-      setActivePage('projects')
-    } else if (pathname === '/') {
-      setActivePage('dashboard')
-    } else if (pathname.startsWith('/hypotheses')) {
-      setActivePage('hypotheses')
-    } else if (pathname.startsWith('/settings')) {
-      setActivePage('settings')
-    }
-  }, [pathname])
+  
+  // プロジェクト詳細ページかどうかを判定
+  const isProjectDetailPage = pathname?.match(/^\/projects\/[^\/]+(?!\/(new))/)
 
   // セッションのチェック
   useEffect(() => {
@@ -39,42 +25,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       try {
         const { data } = await supabase.auth.getSession()
         setIsLoggedIn(!!data.session)
+        
+        // ログインしていないのにログインページ以外にいる場合はリダイレクト
+        if (!data.session && !isLoginPage && !pathname?.startsWith('/auth')) {
+          router.push('/login')
+        }
+        
+        // ルートページにいる場合、ログイン済みならプロジェクト一覧にリダイレクト
+        if (pathname === '/' && data.session) {
+          router.push('/projects')
+        }
       } catch (err) {
         console.error('認証チェックエラー:', err)
       } finally {
-        // 認証チェック完了
         setCheckingAuth(false)
       }
     }
     
     checkSession()
-
-    // セッション変更イベントのリスナー設定
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setIsLoggedIn(!!session)
-        
-        // ログアウト時
-        if (event === 'SIGNED_OUT') {
-          router.push('/login')
-        }
-      }
-    )
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [router])
-
-  // ログアウト処理
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut()
-      router.push('/login')
-    } catch (err) {
-      console.error('ログアウトエラー:', err)
-    }
-  }
+  }, [router, pathname, isLoginPage])
 
   // ログインページか認証チェック中の場合はシンプルなレイアウト
   if (isLoginPage || checkingAuth) {
@@ -100,83 +69,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ja">
       <body className="flex min-h-screen bg-gray-50 text-gray-900">
-        {/* Sidebar */}
-        <aside className="w-64 bg-gray-900 text-white flex flex-col px-6 py-8">
-          <div className="text-2xl font-bold tracking-wide mb-12">Inovie</div>
-          <nav className="space-y-4">
-            <NavItem 
-              href="/" 
-              icon={<LayoutDashboard size={20} />}
-              isActive={activePage === 'dashboard'}
-            >
-              ダッシュボード
-            </NavItem>
-            <NavItem 
-              href="/projects" 
-              icon={<FolderKanban size={20} />}
-              isActive={activePage === 'projects'}
-            >
-              プロジェクト
-            </NavItem>
-            <NavItem 
-              href="/hypotheses" 
-              icon={<FlaskConical size={20} />}
-              isActive={activePage === 'hypotheses'}
-            >
-              仮説
-            </NavItem>
-            <NavItem 
-              href="/settings" 
-              icon={<Settings size={20} />}
-              isActive={activePage === 'settings'}
-            >
-              設定
-            </NavItem>
-            
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-gray-800 hover:text-red-400 transition-colors w-full text-left mt-6"
-            >
-              <LogOut size={20} />
-              <span className="text-sm font-medium">ログアウト</span>
-            </button>
-          </nav>
-
-          <SidebarFooter />
-        </aside>
+        {/* サイドバー - 条件によって切り替え */}
+        {isProjectDetailPage ? (
+          <ProjectSidebar projectId={pathname?.split('/')[2]} />
+        ) : (
+          <GlobalSidebar />
+        )}
 
         {/* Main Content */}
         <main className="flex-1 p-6 md:p-10 space-y-6">
-          <Breadcrumbs /> {/* パンくずリストを常設！ */}
           {children}
         </main>
       </body>
     </html>
-  )
-}
-
-function NavItem({ 
-  href, 
-  icon, 
-  children,
-  isActive = false
-}: { 
-  href: string; 
-  icon: React.ReactNode; 
-  children: React.ReactNode;
-  isActive?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
-        isActive 
-          ? 'bg-indigo-600 text-white' 
-          : 'hover:bg-gray-800 hover:text-indigo-400'
-      }`}
-    >
-      {icon}
-      <span className="text-sm font-medium">{children}</span>
-    </Link>
   )
 }
