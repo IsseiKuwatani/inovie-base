@@ -9,10 +9,12 @@ import {
   Home, 
   Lightbulb, 
   Map, 
+  MapPinned,
   Settings, 
   ArrowLeft, 
   LogOut,
   ChevronRight,
+  Network,
   Layers // 追加: リーンキャンバス用アイコン
 } from 'lucide-react'
 
@@ -27,8 +29,11 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
   useEffect(() => {
     if (pathname?.includes('/hypotheses/tree-map')) {
       setActiveSection('tree-map')
+    } else if (pathname?.includes('/hypotheses/map')) {
+      setActiveSection('map')
     } else if (pathname?.includes('/hypotheses')) {
       setActiveSection('hypotheses')
+    
     } else if (pathname?.includes('/settings')) {
       setActiveSection('settings')
     } else if (pathname?.includes('/canvas')) { 
@@ -95,28 +100,26 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
       });
       
       // 仮説関連
-      if (segments.includes('hypotheses')) {
-        if (segments.length === 3) {
-          breadcrumbs.push({
-            href: `/projects/${projectId}/hypotheses`,
-            label: '仮説一覧'
-          });
-        } else if (segments.includes('tree-map')) {
-          breadcrumbs.push({
-            href: `/projects/${projectId}/hypotheses/tree-map`,
-            label: 'ツリーマップ'
-          });
-        } else if (segments.includes('map')) {
-          breadcrumbs.push({
-            href: `/projects/${projectId}/hypotheses/map`,
-            label: 'マップ表示'
-          });
-        } else if (segments.includes('new')) {
-          breadcrumbs.push({
-            href: `/projects/${projectId}/hypotheses/new`,
-            label: '新規作成'
-          });
-        }
+      if (segments.includes('tree-map')) {
+        breadcrumbs.push({
+          href: `/projects/${projectId}/hypotheses/tree-map`,
+          label: 'ツリーマップ'
+        });
+      } else if (segments.includes('map')) {
+        breadcrumbs.push({
+          href: `/projects/${projectId}/hypotheses/map`,
+          label: 'マップ表示'
+        });
+      } else if (segments.includes('new')) {
+        breadcrumbs.push({
+          href: `/projects/${projectId}/hypotheses/new`,
+          label: '新規作成'
+        });
+      } else if (segments.includes('hypotheses')) {
+        breadcrumbs.push({
+          href: `/projects/${projectId}/hypotheses`,
+          label: '仮説一覧'
+        });
       }
       
       // 設定
@@ -202,8 +205,15 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
               仮説一覧
             </ProjectNavItem>
             <ProjectNavItem 
+              href={`/projects/${projectId}/hypotheses/map`}
+              icon={<MapPinned size={18} />}
+              isActive={activeSection === 'map'}
+            >
+              仮説マップ
+            </ProjectNavItem>
+            <ProjectNavItem 
               href={`/projects/${projectId}/hypotheses/tree-map`}
-              icon={<Map size={18} />}
+              icon={<Network size={18} />}
               isActive={activeSection === 'tree-map'}
             >
               仮説ツリーマップ

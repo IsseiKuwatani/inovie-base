@@ -6,7 +6,8 @@ import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
 import {
   MapPinned, FlaskConical, Plus, LayoutGrid, TrendingUp,
-  BarChart3, FileText, ClipboardList, Loader2, Map as MapIcon
+  BarChart3, FileText, ClipboardList, Loader2, Map as MapIcon, Network,
+  Pencil, Check, X
 } from 'lucide-react'
 
 export default function ProjectDashboard() {
@@ -14,6 +15,12 @@ export default function ProjectDashboard() {
   const [project, setProject] = useState<any>(null)
   const [hypotheses, setHypotheses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editedProject, setEditedProject] = useState<{name: string, description: string}>({
+    name: '',
+    description: ''
+  })
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -25,12 +32,59 @@ export default function ProjectDashboard() {
         .order('created_at', { ascending: false })
 
       setProject(projectData)
+      setEditedProject({
+        name: projectData?.name || '',
+        description: projectData?.description || ''
+      })
       setHypotheses(hypothesisData || [])
       setLoading(false)
     }
 
     fetchData()
   }, [projectId])
+
+  const handleEditToggle = () => {
+    if (isEditing) {
+      // 編集キャンセル時は元の値に戻す
+      setEditedProject({
+        name: project?.name || '',
+        description: project?.description || ''
+      })
+    }
+    setIsEditing(!isEditing)
+  }
+
+  const handleSaveProject = async () => {
+    if (!project || !editedProject.name.trim()) return
+    
+    setSaving(true)
+    
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          name: editedProject.name,
+          description: editedProject.description
+        })
+        .eq('id', projectId)
+      
+      if (error) {
+        console.error('プロジェクト更新エラー:', error)
+      } else {
+        // 成功したら状態を更新
+        setProject({
+          ...project,
+          name: editedProject.name,
+          description: editedProject.description
+        })
+        setIsEditing(false)
+      }
+    } catch (err) {
+      console.error('更新エラー:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -67,11 +121,63 @@ export default function ProjectDashboard() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* ヘッダー */}
-      <header className="bg-white border border-slate-100 rounded-2xl shadow-sm p-6 space-y-3 hover:shadow-md transition-all duration-300">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">{project.name}</h1>
-        <p className="text-slate-600">{project.description || '（説明は未入力）'}</p>
-        <p className="text-sm text-slate-400 flex items-center gap-2">
+      {/* ヘッダー - 修正箇所 */}
+      <header className="bg-white border border-slate-100 rounded-2xl shadow-sm p-6 hover:shadow-md transition-all duration-300">
+        <div className="flex justify-between items-start mb-3">
+          {isEditing ? (
+            <div className="w-full max-w-2xl">
+              <input
+                type="text"
+                value={editedProject.name}
+                onChange={(e) => setEditedProject({...editedProject, name: e.target.value})}
+                className="text-2xl font-bold w-full p-2 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
+                placeholder="プロジェクト名"
+              />
+              <textarea
+                value={editedProject.description}
+                onChange={(e) => setEditedProject({...editedProject, description: e.target.value})}
+                className="w-full p-2 text-slate-600 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                rows={3}
+                placeholder="プロジェクトの説明（任意）"
+              />
+            </div>
+          ) : (
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">{project.name}</h1>
+              <p className="text-slate-600 mt-2">{project.description || '（説明は未入力）'}</p>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2">
+            {isEditing ? (
+              <>
+                <button 
+                  onClick={handleSaveProject}
+                  disabled={saving || !editedProject.name.trim()}
+                  className="flex items-center gap-1 p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                </button>
+                <button 
+                  onClick={handleEditToggle}
+                  className="flex items-center gap-1 p-2 border border-slate-200 text-slate-600 rounded-full hover:bg-slate-50 transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </>
+            ) : (
+              <button 
+                onClick={handleEditToggle}
+                className="flex items-center gap-1 px-3 py-1.5 border border-slate-200 text-slate-600 rounded-full hover:bg-slate-50 transition-colors text-sm"
+              >
+                <Pencil size={14} />
+                編集
+              </button>
+            )}
+          </div>
+        </div>
+        
+        <p className="text-sm text-slate-400 flex items-center gap-2 mt-2">
           <CalendarDays size={14} />
           作成日: {new Date(project.created_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' })}
         </p>
@@ -109,38 +215,36 @@ export default function ProjectDashboard() {
         />
       </section>
 
-      {/* アクション */}
-      <section className="flex flex-wrap gap-3">
+      {/* アクション - 修正：レスポンシブ対応改善 */}
+      <section className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3">
         <Link
           href={`/projects/${projectId}/hypotheses`}
-          className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-full hover:border-indigo-200 hover:text-indigo-700 transition-colors text-sm shadow-sm"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-full hover:border-indigo-200 hover:text-indigo-700 transition-colors text-sm shadow-sm"
         >
           <LayoutGrid size={16} />
-          仮説一覧へ
+          <span className="hidden sm:inline">仮説一覧へ</span>
         </Link>
         <Link
           href={`/projects/${projectId}/hypotheses/map`}
-          className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-full hover:border-indigo-200 hover:text-indigo-700 transition-colors text-sm shadow-sm"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-full hover:border-indigo-200 hover:text-indigo-700 transition-colors text-sm shadow-sm"
         >
           <MapPinned size={16} />
-          優先マップで表示
+          <span className="hidden sm:inline">仮説マップ</span>
         </Link>
         <Link
-  href={`/projects/${projectId}/hypotheses/tree-map`}
-  className="flex items-center gap-2 px-5 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-full hover:border-indigo-200 hover:text-indigo-700 transition-colors text-sm shadow-sm"
->
-  <MapIcon size={16} />
-  ツリーマップ
-</Link>
+          href={`/projects/${projectId}/hypotheses/tree-map`}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-slate-700 border border-slate-200 rounded-full hover:border-indigo-200 hover:text-indigo-700 transition-colors text-sm shadow-sm col-span-2 sm:col-span-1"
+        >
+          <Network size={16} />
+          <span className="hidden sm:inline">ツリーマップ</span>
+        </Link>
         <Link
           href={`/projects/${projectId}/hypotheses/new`}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-full hover:shadow-lg hover:translate-y-[-1px] transition-all duration-300 text-sm shadow-sm"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-full hover:shadow-lg hover:translate-y-[-1px] transition-all duration-300 text-sm shadow-sm col-span-2 sm:col-span-1"
         >
           <Plus size={16} />
           仮説を追加
         </Link>
-
-        
       </section>
 
       {/* 最新の仮説一覧（3件だけ） */}

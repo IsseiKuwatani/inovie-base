@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
 import classNames from 'classnames'
 import React from 'react'
-import { X, Map, AlertTriangle, CheckCircle, XCircle, HelpCircle, ArrowUpRight, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Map, AlertTriangle, CheckCircle, XCircle, HelpCircle, ArrowUpRight, ChevronDown, ChevronUp,ArrowLeft,MapPinned } from 'lucide-react'
 
 type Hypothesis = {
   id: string
@@ -26,6 +26,7 @@ export default function HypothesisMap() {
   const [loading, setLoading] = useState(true)
   const [showDetails, setShowDetails] = useState(false)
   const detailsRef = React.useRef<HTMLDivElement>(null)
+  const [projectName, setProjectName] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -76,8 +77,22 @@ export default function HypothesisMap() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-8">
+         {/* プロジェクト&ナビゲーション */}
+      <div className="flex items-center gap-2 text-sm text-slate-500 mb-2">
+                      <Link href={`/projects/${projectId}`} className="hover:text-indigo-600 flex items-center gap-1">
+                        <ArrowLeft size={16} />
+                        <span>{projectName ? projectName : 'プロジェクト'}</span>
+                      </Link>
+                      <span>/</span>
+                      <Link href={`/projects/${projectId}/hypotheses`} className="hover:text-indigo-600">
+                        仮説一覧
+                      </Link>
+                      <span>/</span>
+                      <span className="text-indigo-600 font-medium">仮説マップ</span>
+                    </div>
         <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent flex items-center gap-2">
-          <Map className="text-indigo-500" size={28} />
+                    
+          <MapPinned className="text-indigo-500" size={28} />
           仮説マップ
         </h1>
         <p className="text-slate-600 mt-2">

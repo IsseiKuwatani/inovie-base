@@ -8,7 +8,7 @@ import React from 'react'
 import { 
   X, Map as MapIcon, AlertTriangle, CheckCircle, XCircle, 
   HelpCircle, ArrowUpRight, ChevronDown, ChevronUp, 
-  Link as LinkIcon, ArrowLeft, ExternalLink, Layers, List
+  Link as LinkIcon, ArrowLeft, ExternalLink, Layers, List,Network
 } from 'lucide-react'
 
 type Hypothesis = {
@@ -458,11 +458,12 @@ export default function HypothesisTreeMap() {
             <span className="text-indigo-600 font-medium">ツリーマップ</span>
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent flex items-center gap-2">
-            <MapIcon className="text-indigo-500" size={28} />
+            <Network className="text-indigo-500" size={28} />
             仮説ツリーマップ
           </h1>
           <p className="text-slate-600 mt-2">
-            仮説の関連性を可視化し、マップ・ループ・リープの流れを表現します。それぞれの仮説をクリックすると詳細が表示されます。
+            仮説の関連性を可視化し、マップ・ループ・リープの流れを表現します。<br />
+            それぞれの仮説をクリックすると詳細が表示されます。
           </p>
         </div>
 
