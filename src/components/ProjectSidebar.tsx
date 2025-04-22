@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
+import ProjectAnalyticsDashboard from './ProjectAnalyticsDashboard' 
 import { 
   Home, 
   Lightbulb, 
@@ -16,7 +17,8 @@ import {
   ChevronRight,
   Network,
   Clock,
-  Layers
+  Layers,
+  BarChart3
 } from 'lucide-react'
 
 export default function ProjectSidebar({ projectId }: { projectId: string }) {
@@ -41,6 +43,8 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
       setActiveSection('settings')
     } else if (pathname?.includes('/canvas')) { 
       setActiveSection('canvas')
+    } else if (pathname?.includes('/analytics')) { 
+      setActiveSection('analytics')
     } else {
       setActiveSection('overview')
     }
@@ -184,6 +188,13 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
               isActive={activeSection === 'overview'}
             >
               プロジェクト概要
+            </ProjectNavItem>
+            <ProjectNavItem 
+              href={`/projects/${projectId}/analytics`}
+              icon={<BarChart3 size={18} />}
+              isActive={activeSection === 'analytics'}
+            >
+              アナリティクス
             </ProjectNavItem>
             <ProjectNavItem 
       href={`/projects/${projectId}/canvas`}
