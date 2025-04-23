@@ -24,24 +24,93 @@ import {
   BookOpen
 } from 'lucide-react'
 
+// ユーザープロファイル型定義
+type UserProfile = {
+  id: string;
+  display_name: string | null;
+  email: string;
+  position: string | null;
+  department: string | null;
+  organization_id: string | null;
+  organization?: {
+    id: string;
+    name: string;
+    logo_url: string | null;
+  } | null;
+}
+
 export default function GlobalSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [activePage, setActivePage] = useState('')
   const [isMenuExpanded, setIsMenuExpanded] = useState(false)
   const [user, setUser] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // ユーザー情報を取得
-  useEffect(() => {
-    const fetchUser = async () => {
-      const { data } = await supabase.auth.getUser()
-      if (data.user) {
-        setUser(data.user)
+ // ユーザー情報とプロファイル情報を取得
+useEffect(() => {
+  const fetchUserData = async () => {
+    try {
+      setIsLoading(true)
+      
+      // 認証ユーザー情報を取得
+      const { data: authData } = await supabase.auth.getUser()
+      if (!authData.user) return
+      
+      setUser(authData.user)
+      
+      // ユーザープロファイル情報のみを取得（組織情報は別途）
+      const { data: profileData, error } = await supabase
+        .from('user_profiles')
+        .select('id, display_name, email, position, department, organization_id')
+        .eq('id', authData.user.id)
+        .single()
+      
+      if (error) {
+        console.error('ユーザープロファイル取得エラー:', error)
+        return
       }
+        
+          // 組織情報を別途取得
+      let organizationData = null
+      if (profileData?.organization_id) {
+        const { data: orgData } = await supabase
+          .from('organizations')
+          .select('id, name, logo_url')
+          .eq('id', profileData.organization_id)
+          .single()
+        
+        if (orgData) {
+          organizationData = orgData
+        }
+      }
+      
+      // データを適切に変換
+      const formattedProfile = {
+        id: profileData.id,
+        display_name: profileData.display_name,
+        email: profileData.email,
+        position: profileData.position,
+        department: profileData.department,
+        organization_id: profileData.organization_id,
+        organization: organizationData
+      }
+      
+      setUserProfile(formattedProfile)
+      console.log('設定したプロファイル:', formattedProfile) // 確認用
+      
+    } catch (err) {
+      console.error('データ取得エラー:', err)
+    } finally {
+      setIsLoading(false)
     }
-    
-    fetchUser()
-  }, [])
+  }
+  
+  fetchUserData()
+}, [])
+
+
 
   // アクティブなページを設定
   useEffect(() => {
@@ -72,6 +141,18 @@ export default function GlobalSidebar() {
     } catch (err) {
       console.error('サインアウトエラー:', err)
     }
+  }
+
+  // ユーザーイニシャルを取得
+  const getUserInitials = () => {
+    if (userProfile?.display_name) {
+      // 名前がある場合は名前の最初の文字
+      return userProfile.display_name.charAt(0).toUpperCase()
+    } else if (user?.email) {
+      // 名前がない場合はメールの最初の文字
+      return user.email.charAt(0).toUpperCase()
+    }
+    return '?'
   }
 
   return (
@@ -109,19 +190,49 @@ export default function GlobalSidebar() {
         )}
       </div>
       
-      {/* ユーザー情報 */}
+      {/* ユーザー情報 - 強化バージョン */}
       {user && (
-        <div className="px-5 py-3 border-b border-gray-100">
+        <div className="px-5 py-4 border-b border-gray-100">
           <div className="flex items-center">
-            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-medium">
-              {user.email?.charAt(0).toUpperCase()}
+            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-medium">
+              {getUserInitials()}
             </div>
-            <div className="ml-2">
-              <p className="text-sm font-medium text-gray-800">{user.email?.split('@')[0]}</p>
-              <p className="text-xs text-gray-500">
-                {user.email?.split('@')[1]}
+            <div className="ml-3 flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-800 truncate">
+              {userProfile?.display_name || 'ユーザー'}
+            </p>
+              <p className="text-xs text-gray-500 truncate">
+                {user.email}
               </p>
+              
+              {/* 組織情報 */}
+              {userProfile?.organization && (
+                <div className="mt-1 flex items-center text-xs text-gray-500">
+                  <Building size={12} className="mr-1 flex-shrink-0" />
+                  <span className="truncate">{userProfile.organization.name}</span>
+                </div>
+              )}
+              
+              {/* 部署・役職情報 */}
+              {(userProfile?.department || userProfile?.position) && (
+                <div className="mt-1 text-xs text-gray-500 truncate">
+                  {userProfile.department && <span>{userProfile.department}</span>}
+                  {userProfile.department && userProfile.position && <span> • </span>}
+                  {userProfile.position && <span>{userProfile.position}</span>}
+                </div>
+              )}
             </div>
+          </div>
+          
+          {/* プロファイルへのリンク */}
+          <div className="mt-3">
+            <Link 
+              href="/profile" 
+              className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline flex items-center"
+            >
+              <UserCog size={12} className="mr-1" />
+              プロフィール設定
+            </Link>
           </div>
         </div>
       )}
@@ -146,26 +257,14 @@ export default function GlobalSidebar() {
           >
             プロジェクト
           </NavItem>
-          <NavItem 
-            href="/team"
-            icon={<Users size={18} />}
-            isActive={activePage === 'team'}
-          >
-            チーム
-          </NavItem>
+
         </div>
         
         <div className="space-y-1 mb-6">
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 mb-2">
             ワークスペース
           </h3>
-          <NavItem 
-            href="/analytics"
-            icon={<BarChart4 size={18} />}
-            isActive={activePage === 'analytics'}
-          >
-            データ分析
-          </NavItem>
+
           <NavItem 
             href="/reports"
             icon={<FileText size={18} />}
@@ -180,13 +279,7 @@ export default function GlobalSidebar() {
           >
             ドキュメント
           </NavItem>
-          <NavItem 
-            href="/calendar"
-            icon={<Calendar size={18} />}
-            isActive={activePage === 'calendar'}
-          >
-            カレンダー
-          </NavItem>
+
         </div>
         
         <div className="space-y-1 mb-6">
@@ -199,13 +292,6 @@ export default function GlobalSidebar() {
             isActive={activePage === 'organization'}
           >
             組織管理
-          </NavItem>
-          <NavItem 
-            href="/messages"
-            icon={<MessageSquare size={18} />}
-            isActive={activePage === 'messages'}
-          >
-            メッセージ
           </NavItem>
         </div>
         
