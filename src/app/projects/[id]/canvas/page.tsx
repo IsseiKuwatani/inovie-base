@@ -431,103 +431,139 @@ export default function CanvasPage({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  // テキストエリアコンポーネント (リッチバージョン)
-  const CanvasSection = ({ 
-    config,
-    value,
-    onChange,
-    expanded = false,
-    onExpand
-  }: { 
-    config: CanvasSectionConfig,
-    value: string, 
-    onChange: (field: keyof CanvasData, value: string) => void,
-    expanded?: boolean,
-    onExpand?: () => void
-  }) => {
-    const isEditing = viewMode === 'edit'
-    const hasContent = value && value.trim().length > 0
-    
-    // ローカルステートで値を管理して、スムーズな入力を可能にする
-    const [localValue, setLocalValue] = useState(value || '');
-    
-    // 外部からの値が変更された場合にローカル値も更新
-    useEffect(() => {
-      setLocalValue(value || '');
-    }, [value]);
-    
-    // フォーカスが外れた時にのみ親コンポーネントを更新
-    const handleBlur = () => {
-      if (localValue !== value) {
-        onChange(config.field, localValue);
-      }
-    };
-    
-    return (
-      <div className={`
-        flex flex-col h-full rounded-lg overflow-hidden transition-all duration-300
-        ${config.color} ${expanded ? 'col-span-3 row-span-2' : ''}
-        ${isEditing ? 'shadow-sm hover:shadow' : 'shadow-none'}
-      `}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-opacity-50">
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-medium text-slate-700">
-              {config.title}
-            </h3>
+// テキストエリアコンポーネント (リッチバージョン)
+const CanvasSection = ({ 
+  config,
+  value,
+  onChange,
+  expanded = false,
+  onExpand
+}: { 
+  config: CanvasSectionConfig,
+  value: string, 
+  onChange: (field: keyof CanvasData, value: string) => void,
+  expanded?: boolean,
+  onExpand?: () => void
+}) => {
+  const isEditing = viewMode === 'edit'
+  const hasContent = value && value.trim().length > 0
+  
+  // ローカルステートで値を管理して、スムーズな入力を可能にする
+  const [localValue, setLocalValue] = useState(value || '');
+  // フォーカス状態を管理
+  const [isFocused, setIsFocused] = useState(false);
+  // テキストエリアの参照
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // 外部からの値が変更された場合にローカル値も更新
+  useEffect(() => {
+    setLocalValue(value || '');
+  }, [value]);
+  
+  // テキストエリアの高さを自動調整する関数
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      const newHeight = Math.max(textarea.scrollHeight, 80); // 最小高さは80px
+      textarea.style.height = `${newHeight}px`;
+    }
+  };
+  
+  // 値が変更されたときに高さを調整
+  useEffect(() => {
+    if (isFocused) {
+      adjustTextareaHeight();
+    }
+  }, [localValue, isFocused]);
+  
+  // フォーカスが外れた時にのみ親コンポーネントを更新
+  const handleBlur = () => {
+    setIsFocused(false);
+    if (localValue !== value) {
+      onChange(config.field, localValue);
+    }
+  };
+  
+  // フォーカス時の処理
+  const handleFocus = () => {
+    setIsFocused(true);
+    // 少し遅延させてから高さ調整を行うことで、フォーカス後のアニメーションをスムーズにする
+    setTimeout(adjustTextareaHeight, 50);
+  };
+  
+  return (
+    <div className={`
+      flex flex-col h-full rounded-lg overflow-hidden transition-all duration-300
+      ${config.color} ${expanded ? 'col-span-3 row-span-2' : ''}
+      ${isEditing ? 'shadow-sm hover:shadow' : 'shadow-none'}
+    `}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-opacity-50">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-slate-700">
+            {config.title}
+          </h3>
+          <button
+            type="button"
+            className="p-1 text-slate-500 hover:text-slate-700 rounded"
+            onClick={() => toggleTooltip(activeTooltip === config.field ? null : config.field)}
+            aria-label="ヘルプ"
+          >
+            <HelpCircle size={14} />
+          </button>
+        </div>
+        <div className="flex items-center gap-1">
+          {onExpand && (
             <button
               type="button"
               className="p-1 text-slate-500 hover:text-slate-700 rounded"
-              onClick={() => toggleTooltip(activeTooltip === config.field ? null : config.field)}
-              aria-label="ヘルプ"
+              onClick={onExpand}
+              aria-label={expanded ? "縮小" : "拡大"}
             >
-              <HelpCircle size={14} />
+              {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
-          </div>
-          <div className="flex items-center gap-1">
-            {onExpand && (
-              <button
-                type="button"
-                className="p-1 text-slate-500 hover:text-slate-700 rounded"
-                onClick={onExpand}
-                aria-label={expanded ? "縮小" : "拡大"}
-              >
-                {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-              </button>
-            )}
-          </div>
-        </div>
-        
-        <div className="flex-grow flex flex-col p-3">
-          {isEditing ? (
-            <textarea
-              className="flex-grow w-full p-2 text-sm bg-white bg-opacity-70 border border-opacity-50 rounded resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              placeholder={config.placeholder}
-              value={localValue}
-              onChange={(e) => setLocalValue(e.target.value)}
-              onBlur={handleBlur}
-            />
-          ) : (
-            <div className="flex-grow p-2 text-sm overflow-auto whitespace-pre-wrap">
-              {hasContent ? value : (
-                <span className="text-slate-400 italic">内容がまだ入力されていません</span>
-              )}
-            </div>
-          )}
-          
-          {expanded && (
-            <div className="mt-3 text-xs text-slate-500">
-              <p className="font-medium mb-1">ガイド:</p>
-              <ul className="space-y-1 list-disc pl-4">
-                {config.questions.map((q, i) => (
-                  <li key={i}>{q}</li>
-                ))}
-              </ul>
-            </div>
           )}
         </div>
       </div>
-    )
-  }
+      
+      <div className="flex-grow flex flex-col p-3">
+        {isEditing ? (
+          <textarea
+            ref={textareaRef}
+            className={`
+              flex-grow w-full p-2 text-sm bg-white bg-opacity-70 border border-opacity-50 rounded
+              resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
+              transition-all duration-300 ease-in-out
+              ${isFocused ? 'min-h-[150px]' : 'min-h-[80px]'}
+            `}
+            placeholder={config.placeholder}
+            value={localValue}
+            onChange={(e) => setLocalValue(e.target.value)}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+          />
+        ) : (
+          <div className="flex-grow p-2 text-sm overflow-auto whitespace-pre-wrap">
+            {hasContent ? value : (
+              <span className="text-slate-400 italic">内容がまだ入力されていません</span>
+            )}
+          </div>
+        )}
+        
+        {expanded && (
+          <div className="mt-3 text-xs text-slate-500">
+            <p className="font-medium mb-1">ガイド:</p>
+            <ul className="space-y-1 list-disc pl-4">
+              {config.questions.map((q, i) => (
+                <li key={i}>{q}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
   // ビジュアルマップのレイアウト決定
   const getCategoryArea = (category: CanvasSectionConfig['category']) => {
