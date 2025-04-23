@@ -7,29 +7,47 @@ const supabase = createClient(
 )
 
 export async function POST(req: Request) {
-  const body = await req.json()
-  const { name, status, description, autoGenerateHypotheses } = body
+  try {
+    const body = await req.json()
+    console.log('受信データ:', body) // デバッグ用
+    
+    // organization_idを追加
+    const { name, status, description, autoGenerateHypotheses, organization_id } = body
 
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '')
-  const { data: { user }, error: userError } = await supabase.auth.getUser(token!)
+    const token = req.headers.get('Authorization')?.replace('Bearer ', '')
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token!)
 
-  if (userError || !user) {
-    return NextResponse.json({ error: 'ユーザー認証に失敗しました' }, { status: 401 })
-  }
+    if (userError || !user) {
+      return NextResponse.json({ error: 'ユーザー認証に失敗しました' }, { status: 401 })
+    }
 
-  const { data: project, error: insertError } = await supabase
-    .from('projects')
-    .insert([{ name, status, description, user_id: user.id }])
-    .select()
-    .single()
+    // プロジェクトデータに組織IDを含める
+    const projectData = { 
+      name, 
+      status, 
+      description, 
+      user_id: user.id, 
+      organization_id // 組織IDを追加
+    }
+    
+    console.log('保存するプロジェクトデータ:', projectData) // デバッグ用
 
-  if (insertError || !project) {
-    return NextResponse.json({ error: 'プロジェクトの作成に失敗しました' }, { status: 500 })
-  }
+    const { data: project, error: insertError } = await supabase
+      .from('projects')
+      .insert([projectData])
+      .select()
+      .single()
 
-  if (autoGenerateHypotheses) {
-    try {
-      const prompt = `
+    if (insertError || !project) {
+      console.error('プロジェクト作成エラー:', insertError) // デバッグ用
+      return NextResponse.json({ error: 'プロジェクトの作成に失敗しました' }, { status: 500 })
+    }
+
+    // 以下は既存のコード（仮説自動生成部分）
+
+    if (autoGenerateHypotheses) {
+      try {
+        const prompt = `
 以下は新規事業プロジェクトの情報です。
 
 【プロジェクト名】
@@ -76,77 +94,81 @@ confidence=確信度です。
   },
   ...
 ]
-      `.trim()
+        `.trim()
 
-      const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [{ role: 'user', content: prompt }]
+        const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: 'deepseek-chat',
+            messages: [{ role: 'user', content: prompt }]
+          })
         })
-      })
 
-      const result = await res.json()
-      const content = result.choices?.[0]?.message?.content
-      console.log('🧠 DeepSeek Response:', content)
+        const result = await res.json()
+        const content = result.choices?.[0]?.message?.content
+        console.log('🧠 DeepSeek Response:', content)
 
-      if (!content) {
-        return NextResponse.json({ error: 'AI応答が不正です' }, { status: 500 })
-      }
+        if (!content) {
+          return NextResponse.json({ error: 'AI応答が不正です' }, { status: 500 })
+        }
 
-      let hypotheses = []
-      try {
-        const cleaned = content.replace(/```json|```/g, '').trim()
-        const parsed = JSON.parse(cleaned)
-        hypotheses = Array.isArray(parsed) ? parsed : parsed.hypotheses
+        let hypotheses = []
+        try {
+          const cleaned = content.replace(/```json|```/g, '').trim()
+          const parsed = JSON.parse(cleaned)
+          hypotheses = Array.isArray(parsed) ? parsed : parsed.hypotheses
+        } catch (err) {
+          console.error('❌ JSONパースエラー:', err)
+          console.error('🔍 返答内容:', content)
+          return NextResponse.json({ error: 'AIの返答が正しい形式ではありません' }, { status: 500 })
+        }
+
+        const normalizeScore = (val: any) => {
+          const num = Number(val)
+          if (isNaN(num)) return 3
+          return Math.min(5, Math.max(1, Math.round(num)))
+        }
+
+        const normalizeHypothesis = (h: any) => ({
+          title: h.title ?? h['タイトル'],
+          assumption: h.premise ?? h['前提'],
+          solution: h.solution ?? h['解決策'],
+          expected_effect: h.expected_effect ?? h['期待される効果'] ?? '',
+          type: h.type ?? h['仮説タイプ'],
+          status: h.status ?? h['ステータス'] ?? '未検証',
+          impact: normalizeScore(h.impact ?? h['影響度']),
+          uncertainty: normalizeScore(h.uncertainty ?? h['不確実性']),
+          confidence: normalizeScore(h.confidence ?? h['確信度'])
+        })
+
+        const inserts = hypotheses.map((h: any) => ({
+          project_id: project.id,
+          ...normalizeHypothesis(h)
+        }))
+
+        console.log('📝 仮説保存内容:', inserts)
+
+        const { error: insertHypothesisError } = await supabase
+          .from('hypotheses')
+          .insert(inserts)
+
+        if (insertHypothesisError) {
+          console.error('❌ 仮説保存に失敗:', insertHypothesisError)
+          return NextResponse.json({ error: '仮説の保存に失敗しました' }, { status: 500 })
+        }
       } catch (err) {
-        console.error('❌ JSONパースエラー:', err)
-        console.error('🔍 返答内容:', content)
-        return NextResponse.json({ error: 'AIの返答が正しい形式ではありません' }, { status: 500 })
+        console.error('❌ 仮説自動生成中にエラー:', err)
+        return NextResponse.json({ error: '仮説生成中にエラーが発生しました' }, { status: 500 })
       }
-
-      const normalizeScore = (val: any) => {
-        const num = Number(val)
-        if (isNaN(num)) return 3
-        return Math.min(5, Math.max(1, Math.round(num)))
-      }
-
-      const normalizeHypothesis = (h: any) => ({
-        title: h.title ?? h['タイトル'],
-        assumption: h.premise ?? h['前提'],
-        solution: h.solution ?? h['解決策'],
-        expected_effect: h.expected_effect ?? h['期待される効果'] ?? '',
-        type: h.type ?? h['仮説タイプ'],
-        status: h.status ?? h['ステータス'] ?? '未検証',
-        impact: normalizeScore(h.impact ?? h['影響度']),
-        uncertainty: normalizeScore(h.uncertainty ?? h['不確実性']),
-        confidence: normalizeScore(h.confidence ?? h['確信度'])
-      })
-
-      const inserts = hypotheses.map((h: any) => ({
-        project_id: project.id,
-        ...normalizeHypothesis(h)
-      }))
-
-      console.log('📝 仮説保存内容:', inserts)
-
-      const { error: insertHypothesisError } = await supabase
-        .from('hypotheses')
-        .insert(inserts)
-
-      if (insertHypothesisError) {
-        console.error('❌ 仮説保存に失敗:', insertHypothesisError)
-        return NextResponse.json({ error: '仮説の保存に失敗しました' }, { status: 500 })
-      }
-    } catch (err) {
-      console.error('❌ 仮説自動生成中にエラー:', err)
-      return NextResponse.json({ error: '仮説生成中にエラーが発生しました' }, { status: 500 })
     }
-  }
 
-  return NextResponse.json({ message: 'プロジェクト作成成功' })
+    return NextResponse.json({ message: 'プロジェクト作成成功', project })
+  } catch (err) {
+    console.error('💥 予期せぬエラー:', err)
+    return NextResponse.json({ error: '予期せぬエラーが発生しました' }, { status: 500 })
+  }
 }

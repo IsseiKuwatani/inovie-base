@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef,} from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import {
@@ -101,7 +101,7 @@ export default function ProjectList() {
         
         if (userData.user) {
           setUser(userData.user)
-          fetchProjects(userData.user.id)
+          fetchProjects() // 引数なしで呼び出し
         }
       } catch (err) {
         console.error('データ取得エラー:', err)
@@ -113,36 +113,95 @@ export default function ProjectList() {
     
     fetchInitialData()
   }, [])
-
+  
   // プロジェクト一覧の取得
-  const fetchProjects = async (userId: string) => {
+  const fetchProjects = async () => {  // 引数なしの関数定義
     try {
-      setLoading(true)
-  
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*, hypotheses(count), is_favorite') // is_favoriteフィールドを明示的に取得
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-  
-      if (error) {
-        console.error('プロジェクト取得エラー:', error)
-        setErrorMsg('プロジェクトの読み込みに失敗しました')
-      } else {
-        const enriched = data.map((p: any) => ({
-          ...p,
-          hypothesis_count: p.hypotheses[0]?.count ?? 0,
-          is_favorite: p.is_favorite || false // nullの場合はfalseにする
-        }))
-        setProjects(enriched)
+      setLoading(true);
+      setErrorMsg(''); // エラーメッセージをクリア
+      
+      // ユーザー情報を取得
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('ユーザー情報取得エラー:', userError);
+        setErrorMsg('ユーザー情報の取得に失敗しました');
+        return;
       }
+      
+      if (!user) {
+        console.error('ユーザーが認証されていません');
+        setErrorMsg('ログインが必要です');
+        return;
+      }
+      
+      // まず、自分がオーナーのプロジェクトを取得
+      const { data: ownerProjects, error: ownerError } = await supabase
+        .from('projects')
+        .select('*, hypotheses(count), is_favorite')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (ownerError) {
+        console.error('オーナープロジェクト取得エラー:', ownerError);
+        setErrorMsg('プロジェクトの読み込みに失敗しました');
+        return;
+      }
+      
+      // 次に、メンバーのプロジェクトIDを取得
+      const { data: memberData, error: memberError } = await supabase
+        .from('project_members')
+        .select('project_id')
+        .eq('user_id', user.id);
+      
+      if (memberError) {
+        console.error('メンバープロジェクトID取得エラー:', memberError);
+        // エラーがあっても続行（オーナープロジェクトだけでも表示）
+      }
+      
+      // メンバーのプロジェクトIDを取得（エラーがあれば空配列）
+      const memberProjectIds = memberData?.map(item => item.project_id) || [];
+      
+      // メンバーのプロジェクトIDがあれば、それらのプロジェクトも取得
+      let memberProjects = [];
+      if (memberProjectIds.length > 0) {
+        const { data: memberProjectsData, error: memberProjectsError } = await supabase
+          .from('projects')
+          .select('*, hypotheses(count), is_favorite')
+          .in('id', memberProjectIds)
+          .order('created_at', { ascending: false });
+        
+        if (memberProjectsError) {
+          console.error('メンバープロジェクト取得エラー:', memberProjectsError);
+          // エラーがあっても続行（オーナープロジェクトだけでも表示）
+        } else {
+          memberProjects = memberProjectsData || [];
+        }
+      }
+      
+      // オーナープロジェクトとメンバープロジェクトを結合
+      const allProjects = [...(ownerProjects || []), ...memberProjects];
+      
+      // 重複を除去（同じプロジェクトがオーナーとメンバーの両方に含まれる可能性がある）
+      const uniqueProjects = Array.from(
+        new Map(allProjects.map(project => [project.id, project])).values()
+      );
+      
+      // データの整形
+      const enrichedProjects = uniqueProjects.map(p => ({
+        ...p,
+        hypothesis_count: p.hypotheses[0]?.count ?? 0,
+        is_favorite: p.is_favorite || false
+      }));
+      
+      setProjects(enrichedProjects);
     } catch (err) {
-      console.error('プロジェクト取得中のエラー:', err)
-      setErrorMsg('予期せぬエラーが発生しました')
+      console.error('プロジェクト取得中のエラー:', err);
+      setErrorMsg('予期せぬエラーが発生しました');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleDelete = async (id: string) => {
     const confirm = window.confirm('このプロジェクトを削除します。元に戻すことはできません。本当によろしいですか？')

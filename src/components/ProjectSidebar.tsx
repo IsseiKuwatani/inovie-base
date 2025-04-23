@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
-import ProjectAnalyticsDashboard from './ProjectAnalyticsDashboard' 
 import { 
   Home, 
   Lightbulb, 
@@ -21,7 +20,9 @@ import {
   BarChart3
 } from 'lucide-react'
 
-export default function ProjectSidebar({ projectId }: { projectId: string }) {
+export default function ProjectSidebar() {
+  const params = useParams()
+  const projectId = params?.id as string
   const router = useRouter()
   const pathname = usePathname()
   const [project, setProject] = useState<any>(null)
@@ -38,7 +39,6 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
       setActiveSection('hypotheses')
     } else if (pathname?.includes('/timeline')) {
       setActiveSection('timeline')
-    
     } else if (pathname?.includes('/settings')) {
       setActiveSection('settings')
     } else if (pathname?.includes('/canvas')) { 
@@ -49,10 +49,30 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
       setActiveSection('overview')
     }
   }, [pathname])
+
   // プロジェクト情報の取得
   useEffect(() => {
     const fetchProject = async () => {
       setIsLoading(true)
+      
+      // 'new' の場合や無効な UUID の場合はスキップ
+      if (!projectId || projectId === 'new') {
+        setIsLoading(false)
+        return
+      }
+      
+      // UUID の形式を確認
+      const isValidUUID = (uuid: string) => {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        return uuidRegex.test(uuid)
+      }
+      
+      if (!isValidUUID(projectId)) {
+        console.log('有効なプロジェクトIDではありません:', projectId)
+        setIsLoading(false)
+        return
+      }
+      
       try {
         const { data, error } = await supabase
           .from('projects')
@@ -65,16 +85,17 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
         setProject(data)
       } catch (err) {
         console.error('プロジェクト取得エラー:', err)
-        router.push('/projects')
+        // 既存プロジェクトのエラーの場合のみリダイレクト
+        if (pathname !== '/projects/new') {
+          router.push('/projects')
+        }
       } finally {
         setIsLoading(false)
       }
     }
 
-    if (projectId) {
-      fetchProject()
-    }
-  }, [projectId, router])
+    fetchProject()
+  }, [projectId, pathname, router])
 
   // ログアウト処理
   const handleLogout = async () => {
@@ -141,6 +162,11 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
     return breadcrumbs;
   };
 
+  // 新規プロジェクト作成ページでは表示しない
+  if (pathname === '/projects/new') {
+    return null;
+  }
+
   if (isLoading || !project) {
     return (
       <aside className="w-64 bg-gray-900 text-white flex flex-col px-6 py-8">
@@ -197,12 +223,12 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
               アナリティクス
             </ProjectNavItem>
             <ProjectNavItem 
-      href={`/projects/${projectId}/canvas`}
-      icon={<Layers size={18} />}
-      isActive={activeSection === 'canvas'}
-    >
-      リーンキャンバス
-    </ProjectNavItem>
+              href={`/projects/${projectId}/canvas`}
+              icon={<Layers size={18} />}
+              isActive={activeSection === 'canvas'}
+            >
+              リーンキャンバス
+            </ProjectNavItem>
             <ProjectNavItem 
               href={`/projects/${projectId}/timeline`}
               icon={<Clock size={18} />}
@@ -239,10 +265,8 @@ export default function ProjectSidebar({ projectId }: { projectId: string }) {
             >
               仮説ツリーマップ
             </ProjectNavItem>
-            
           </div>
         </div>
-        
         
         <div>
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider px-3 mb-2">

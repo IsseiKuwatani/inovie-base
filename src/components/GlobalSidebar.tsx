@@ -214,7 +214,7 @@ export default function GlobalSidebar() {
             設定
           </h3>
           <NavItem 
-            href="/me"
+            href="/profile"
             icon={<UserCog size={18} />}
             isActive={activePage === 'profile'}
           >

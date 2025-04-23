@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { 
@@ -15,7 +15,8 @@ import {
   Info,
   Clock,
   AlertTriangle,
-  XCircle
+  XCircle,
+  Building
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -29,6 +30,67 @@ export default function NewProjectPage() {
   const [success, setSuccess] = useState(false)
   const [autoGenerate, setAutoGenerate] = useState(false)
   const [estimatedTime, setEstimatedTime] = useState('約3〜5分')
+  
+  // 組織情報関連の状態を追加
+  const [organizationId, setOrganizationId] = useState<string | null>(null)
+  const [organizationName, setOrganizationName] = useState<string | null>(null)
+  const [loadingOrganization, setLoadingOrganization] = useState(true)
+
+  // ページロード時に組織情報を取得
+  useEffect(() => {
+    const fetchUserOrganization = async () => {
+      try {
+        setLoadingOrganization(true)
+        
+        // 現在のユーザー情報を取得
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (!user) {
+          router.push('/login')
+          return
+        }
+        
+        // ユーザープロフィールを取得
+        const { data: profileData, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('organization_id')
+          .eq('id', user.id)
+          .single()
+        
+        if (profileError) {
+          console.error('プロフィール取得エラー:', profileError)
+          setError('組織情報の取得に失敗しました')
+          return
+        }
+        
+        if (!profileData?.organization_id) {
+          setError('所属組織が見つかりません。プロフィールを更新してください。')
+          return
+        }
+        
+        setOrganizationId(profileData.organization_id)
+        
+        // 組織名を取得（オプション）
+        const { data: orgData, error: orgError } = await supabase
+          .from('organizations')
+          .select('name')
+          .eq('id', profileData.organization_id)
+          .single()
+        
+        if (!orgError && orgData) {
+          setOrganizationName(orgData.name)
+        }
+        
+      } catch (err) {
+        console.error('組織情報取得エラー:', err)
+        setError('組織情報の取得に失敗しました')
+      } finally {
+        setLoadingOrganization(false)
+      }
+    }
+    
+    fetchUserOrganization()
+  }, [router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,6 +99,12 @@ export default function NewProjectPage() {
 
     if (!name.trim()) {
       setError('プロジェクト名を入力してください')
+      return
+    }
+    
+    // 組織IDがない場合はエラー
+    if (!organizationId) {
+      setError('所属組織が設定されていません。プロフィールを確認してください。')
       return
     }
 
@@ -56,7 +124,8 @@ export default function NewProjectPage() {
           name,
           status,
           description,
-          autoGenerateHypotheses: autoGenerate
+          autoGenerateHypotheses: autoGenerate,
+          organization_id: organizationId  // 組織IDを追加
         })
       })
 
@@ -77,6 +146,16 @@ export default function NewProjectPage() {
     setLoading(false)
   }
 
+  // 組織情報の読み込み中表示
+  if (loadingOrganization) {
+    return (
+      <div className="max-w-3xl mx-auto flex flex-col items-center justify-center py-12">
+        <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mb-4" />
+        <p className="text-slate-600">組織情報を読み込み中...</p>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       <div className="flex justify-between items-center">
@@ -93,6 +172,17 @@ export default function NewProjectPage() {
         <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent mb-2">新規プロジェクト作成</h1>
         <p className="text-slate-500">プロジェクトを作成して、仮説検証のサイクルを開始しましょう。</p>
       </div>
+
+      {/* 組織情報の表示 */}
+      {organizationId && (
+        <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 flex items-center gap-3">
+          <Building className="text-indigo-600" size={20} />
+          <div>
+            <p className="text-sm text-slate-600">所属組織</p>
+            <p className="font-medium text-slate-800">{organizationName || '組織名が取得できません'}</p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -181,8 +271,6 @@ export default function NewProjectPage() {
                   </div>
                 </div>
                 
-           
-                
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
                   <div className="flex items-start gap-2">
                     <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-rose-600" />
@@ -235,7 +323,7 @@ export default function NewProjectPage() {
             </Link>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !organizationId}
               className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-6 py-2.5 rounded-full hover:shadow-md transition-all duration-300 flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {loading ? (
