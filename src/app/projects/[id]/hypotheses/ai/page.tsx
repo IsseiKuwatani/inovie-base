@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { Loader2, Check, Filter, Save, X } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -18,7 +18,11 @@ export default function AiHypothesisPage() {
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]) // 複数選択用の配列
   const [filterType, setFilterType] = useState<string | null>(null)
   const [savingStatus, setSavingStatus] = useState<string>('') // 保存状態のメッセージ
-  const [generationMode, setGenerationMode] = useState('balanced') // 生成モード
+  const searchParams = useSearchParams()
+  const [generationMode, setGenerationMode] = useState(
+    searchParams.get('mode') === 'roadmap' ? 'roadmap' : 'balanced'
+  ) // 生成モード
+  const [businessType, setBusinessType] = useState<'b2b'|'b2c'>('b2b') // ロードマップモード用
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false) // 詳細設定表示
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -128,7 +132,24 @@ export default function AiHypothesisPage() {
       // 選択された仮説を正規化して配列に格納
       const hypothesesToInsert = selectedIndices.map(index => {
         const hypothesis = normalizeHypothesis(results[index])
-        return { ...hypothesis, project_id: projectId }
+        
+        // ロードマップモードで生成された仮説には追加フィールドがある
+        let additionalFields = {}
+        if (generationMode === 'roadmap') {
+          additionalFields = {
+            roadmap_tag: results[index].roadmap_tag || 'roadmap',
+            roadmap_order: results[index].roadmap_order || 0,
+            verification_methods: results[index].verification_methods || [],
+            success_criteria: results[index].success_criteria || '',
+            next_steps: results[index].next_steps || { success: '', failure: '' }
+          }
+        }
+        
+        return { 
+          ...hypothesis, 
+          project_id: projectId,
+          ...additionalFields
+        }
       })
       
       // 一括挿入
@@ -139,15 +160,27 @@ export default function AiHypothesisPage() {
 
       if (error) throw error
 
-      setSavingStatus(`${data.length}件の仮説を登録しました！`)
+      const successMessage = generationMode === 'roadmap' 
+        ? `${data.length}件の仮説をロードマップとして登録しました！`
+        : `${data.length}件の仮説を登録しました！`
+      
+      setSavingStatus(successMessage)
       
       // 登録完了後、選択をクリア
       setSelectedIndices([])
       
-      // 少し待ってからプロジェクトページに戻る
-      setTimeout(() => {
-        router.push(`/projects/${projectId}/hypotheses`)
-      }, 1500)
+      // ロードマップモードの場合は特別な処理
+      if (generationMode === 'roadmap') {
+        // 3秒後にロードマップページに遷移
+        setTimeout(() => {
+          router.push(`/projects/${projectId}/hypothesis-roadmap`)
+        }, 3000)
+      } else {
+        // 通常モードの場合は標準動作
+        setTimeout(() => {
+          router.push(`/projects/${projectId}/hypotheses`)
+        }, 1500)
+      }
       
     } catch (err: any) {
       console.error(err)
@@ -277,7 +310,68 @@ export default function AiHypothesisPage() {
                   </div>
                   <p className="text-xs text-slate-600">仮説ツリーの基幹となる根本的な仮説を生成します</p>
                 </div>
+
+                {/* 追加: ロードマップモード */}
+                <div
+                  onClick={() => setGenerationMode('roadmap')}
+                  className={`cursor-pointer border rounded-lg p-3 ${
+                    generationMode === 'roadmap' 
+                      ? 'border-purple-300 bg-purple-50 ring-2 ring-purple-100' 
+                      : 'border-slate-200 hover:border-purple-200'
+                  }`}
+                >
+                  <div className="font-medium text-slate-800 mb-1 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h6m-6 4h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    ロードマップ用仮説セット
+                  </div>
+                  <p className="text-xs text-slate-600">検証ロードマップ用の必須仮説セットを生成します</p>
+                </div>
+            </div>
+
+            {/* ロードマップモード用の追加設定 */}
+            {generationMode === 'roadmap' && (
+              <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                <h3 className="text-sm font-medium text-slate-700 mb-2">ビジネスタイプの選択</h3>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <button
+                    onClick={() => setBusinessType('b2b')}
+                    className={`p-3 border rounded-lg flex items-center gap-2 ${
+                      businessType === 'b2b' 
+                        ? 'border-purple-400 bg-purple-100' 
+                        : 'border-slate-200 hover:border-purple-200'
+                    }`}
+                  >
+                    <span className="text-xl">🏢</span>
+                    <div>
+                      <div className="font-medium">B2B</div>
+                      <div className="text-xs text-slate-500">企業向けビジネス</div>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={() => setBusinessType('b2c')}
+                    className={`p-3 border rounded-lg flex items-center gap-2 ${
+                      businessType === 'b2c' 
+                        ? 'border-purple-400 bg-purple-100' 
+                        : 'border-slate-200 hover:border-purple-200'
+                    }`}
+                  >
+                    <span className="text-xl">👨‍👩‍👧</span>
+                    <div>
+                      <div className="font-medium">B2C</div>
+                      <div className="text-xs text-slate-500">消費者向けビジネス</div>
+                    </div>
+                  </button>
+                </div>
+                
+                <p className="text-xs text-purple-700">
+                  ※ ロードマップ用仮説セットを選択すると、複数の関連する仮説が一度に生成され、
+                  検証ロードマップとして利用できるようになります。
+                </p>
               </div>
+            )}
             </div>
             
             <div>
@@ -326,9 +420,25 @@ export default function AiHypothesisPage() {
       )}
 
       {results.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold text-slate-800">生成された仮説 ({results.length}件)</h2>
+          <div className="space-y-6">
+            {/* ロードマップモード用の説明文 */}
+            {generationMode === 'roadmap' && results.length > 0 && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                <h3 className="text-lg font-medium text-purple-800 mb-2">
+                  検証ロードマップ用仮説セット
+                </h3>
+                <p className="text-sm text-purple-700 mb-2">
+                  このセットには検証ロードマップとして利用する7つの段階的な仮説が含まれています。
+                  「選択した仮説を登録」ボタンをクリックすると、仮説ロードマップが作成されます。
+                </p>
+                <div className="text-xs text-purple-600">
+                  ※ 登録後は「仮説ロードマップ」ページで視覚的なロードマップとして確認できます
+                </div>
+              </div>
+            )}
+            
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold text-slate-800">生成された仮説 ({results.length}件)</h2>
             
             <div className="flex flex-wrap items-center gap-4">
               {results.length > 1 && (
@@ -441,6 +551,44 @@ export default function AiHypothesisPage() {
                       <h4 className="text-sm font-medium text-slate-700 mb-1">期待される効果</h4>
                       <p className="text-sm text-slate-600">{result.expected_effect}</p>
                     </div>
+
+                    {/* ロードマップモード用の追加情報表示 */}
+                    {generationMode === 'roadmap' && (
+                      <>
+                        {result.verification_methods && result.verification_methods.length > 0 && (
+                          <div>
+                            <h4 className="text-sm font-medium text-slate-700 mb-1">推奨される検証方法</h4>
+                            <div className="flex flex-wrap gap-2">
+                              {result.verification_methods.map((method: string, i: number) => (
+                                <span key={i} className="px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-700">
+                                  {method}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {result.success_criteria && (
+                          <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+                            <h4 className="text-sm font-medium text-amber-800 mb-1">成功基準</h4>
+                            <p className="text-sm text-amber-700">{result.success_criteria}</p>
+                          </div>
+                        )}
+                        
+                        {result.next_steps && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
+                              <h4 className="text-sm font-medium text-emerald-800 mb-1">検証成功時</h4>
+                              <p className="text-sm text-emerald-700">{result.next_steps.success}</p>
+                            </div>
+                            <div className="bg-rose-50 border border-rose-100 rounded-lg p-3">
+                              <h4 className="text-sm font-medium text-rose-800 mb-1">検証失敗時</h4>
+                              <p className="text-sm text-rose-700">{result.next_steps.failure}</p>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
 
                   <div className="mb-4">

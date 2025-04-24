@@ -17,7 +17,8 @@ import {
   Network,
   Clock,
   Layers,
-  BarChart3
+  BarChart3,
+  AudioWaveform
 } from 'lucide-react'
 
 export default function ProjectSidebar() {
@@ -264,6 +265,13 @@ export default function ProjectSidebar() {
               isActive={activeSection === 'tree-map'}
             >
               仮説ツリーマップ
+            </ProjectNavItem>
+            <ProjectNavItem 
+              href={`/projects/${projectId}/hypothesis-roadmap`}
+              icon={<AudioWaveform size={18} />}
+              isActive={activeSection === 'tree-map'}
+            >
+              仮説ロードマップ
             </ProjectNavItem>
           </div>
         </div>

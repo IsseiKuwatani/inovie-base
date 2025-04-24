@@ -17,5 +17,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true,
     storageKey: 'supabase-auth',
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+  },
+  db: {
+    schema: 'public'
+  },
+  global: {
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    }
   }
 });
