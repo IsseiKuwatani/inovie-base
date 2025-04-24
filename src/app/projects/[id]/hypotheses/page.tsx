@@ -61,6 +61,7 @@ export default function HypothesisList() {
   const [links, setLinks] = useState<HypothesisLink[]>([])
   const [isLoadingLinks, setIsLoadingLinks] = useState(false)
   const [linkSuccess, setLinkSuccess] = useState(false)
+  const [showCreateModal, setShowCreateModal] = useState(false)
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -382,15 +383,15 @@ const deleteSelectedHypotheses = async () => {
             <Network className="text-indigo-500" size={28} />
             <span>ツリーマップを見る</span>
           </Link>
-          <Link
-            href={`/projects/${projectId}/hypotheses/new`}
+          <button
+            onClick={() => setShowCreateModal(true)}
             className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-5 py-2.5 rounded-full hover:shadow-lg hover:translate-y-[-2px] transition-all duration-300 flex items-center gap-2"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
             </svg>
             <span>仮説を追加</span>
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -488,6 +489,55 @@ const deleteSelectedHypotheses = async () => {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 仮説作成モーダル */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-semibold text-slate-800">仮説の作成方法を選択</h3>
+              <button 
+                onClick={() => setShowCreateModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 gap-4 mb-2">
+              <Link
+                href={`/projects/${projectId}/hypotheses/new`}
+                className="bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 rounded-xl p-4 transition-all flex items-center gap-4 group"
+              >
+                <div className="bg-indigo-100 text-indigo-600 p-3 rounded-lg">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="font-medium text-slate-800 group-hover:text-indigo-700 transition-colors">手動で作成</h4>
+                  <p className="text-sm text-slate-500">フォームに入力して仮説を一から作成します</p>
+                </div>
+              </Link>
+              
+              <Link
+                href={`/projects/${projectId}/hypotheses/ai`}
+                className="bg-white border border-slate-200 hover:border-violet-300 hover:bg-violet-50 rounded-xl p-4 transition-all flex items-center gap-4 group"
+              >
+                <div className="bg-violet-100 text-violet-600 p-3 rounded-lg">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="font-medium text-slate-800 group-hover:text-violet-700 transition-colors">AIと一緒に作成</h4>
+                  <p className="text-sm text-slate-500">AIのサポートを受けながら仮説を効率的に作成します</p>
+                </div>
+              </Link>
             </div>
           </div>
         </div>
