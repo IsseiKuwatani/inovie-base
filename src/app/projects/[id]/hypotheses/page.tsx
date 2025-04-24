@@ -40,6 +40,9 @@ export default function HypothesisList() {
   const [columns, setColumns] = useState<number>(2)
   const [sortBy, setSortBy] = useState<SortOption>('priority')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [selectedHypotheses, setSelectedHypotheses] = useState<string[]>([])
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteInProgress, setDeleteInProgress] = useState(false)
   const [filters, setFilters] = useState({
     priority: 'all',
     type: 'all',
@@ -129,6 +132,73 @@ export default function HypothesisList() {
 
     fetchHypotheses()
   }, [projectId])
+
+  // 仮説の選択処理
+const toggleHypothesisSelection = (id: string) => {
+  setSelectedHypotheses(prev => {
+    if (prev.includes(id)) {
+      return prev.filter(item => item !== id);
+    } else {
+      return [...prev, id];
+    }
+  });
+};
+
+// すべての仮説を選択/選択解除
+const toggleSelectAll = () => {
+  if (selectedHypotheses.length === filteredHypotheses.length) {
+    setSelectedHypotheses([]);
+  } else {
+    setSelectedHypotheses(filteredHypotheses.map(h => h.id));
+  }
+};
+
+// 選択した仮説を削除する
+const deleteSelectedHypotheses = async () => {
+  if (selectedHypotheses.length === 0) return;
+  
+  setDeleteInProgress(true);
+  
+  try {
+    // 関連するリンクを削除
+    const linksToDelete = links.filter(link => 
+      selectedHypotheses.includes(link.from_id) || selectedHypotheses.includes(link.to_id)
+    );
+    
+    if (linksToDelete.length > 0) {
+      const linkIds = linksToDelete.map(link => link.id);
+      await supabase
+        .from('hypothesis_links')
+        .delete()
+        .in('id', linkIds);
+    }
+    
+    // 仮説を削除
+    const { error } = await supabase
+      .from('hypotheses')
+      .delete()
+      .in('id', selectedHypotheses);
+    
+    if (error) {
+      console.error('削除エラー:', error);
+      alert('仮説の削除中にエラーが発生しました');
+      return;
+    }
+    
+    // 成功したら状態を更新
+    setHypotheses(prev => prev.filter(h => !selectedHypotheses.includes(h.id)));
+    setLinks(prev => prev.filter(link => 
+      !selectedHypotheses.includes(link.from_id) && !selectedHypotheses.includes(link.to_id)
+    ));
+    setSelectedHypotheses([]);
+    setShowDeleteConfirm(false);
+  } catch (err) {
+    console.error('削除処理エラー:', err);
+    alert('削除処理中にエラーが発生しました');
+  } finally {
+    setDeleteInProgress(false);
+  }
+};
 
   // 仮説リンクを追加する関数
   const addHypothesisLink = async () => {
@@ -423,6 +493,75 @@ export default function HypothesisList() {
         </div>
       )}
 
+      {/* 削除確認モーダル */}
+{showDeleteConfirm && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-xl p-6 w-full max-w-md">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-xl font-semibold text-slate-800">仮説の削除</h3>
+        <button 
+          onClick={() => setShowDeleteConfirm(false)}
+          className="text-slate-400 hover:text-slate-600 p-1"
+          disabled={deleteInProgress}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      
+      <div className="mb-6">
+        <div className="bg-amber-50 border border-amber-200 text-amber-700 rounded-lg p-3 mb-4 flex items-start">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <p>選択した <strong>{selectedHypotheses.length}件</strong> の仮説を削除します。この操作は取り消せません。</p>
+        </div>
+        <p className="text-sm text-slate-600 mb-2">
+          削除すると、以下の情報がすべて失われます：
+        </p>
+        <ul className="text-sm text-slate-600 list-disc pl-5 mb-4">
+          <li>仮説の内容と評価</li>
+          <li>関連する仮説間のリンク</li>
+        </ul>
+        <p className="text-sm text-slate-600">
+          本当に削除してもよろしいですか？
+        </p>
+      </div>
+      
+      <div className="flex justify-end gap-3">
+        <button
+          onClick={() => setShowDeleteConfirm(false)}
+          disabled={deleteInProgress}
+          className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          キャンセル
+        </button>
+        <button
+          onClick={deleteSelectedHypotheses}
+          disabled={deleteInProgress}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors"
+        >
+          {deleteInProgress ? (
+            <>
+              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>削除中...</span>
+            </>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <span>削除する</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
       {isLoading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
@@ -437,6 +576,32 @@ export default function HypothesisList() {
         </div>
       ) : (
         <>
+
+        {/* 選択されている場合のツールバー */}
+{selectedHypotheses.length > 0 && (
+  <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3 mb-4 flex items-center justify-between">
+    <div className="flex items-center gap-3">
+      <span className="text-indigo-700 font-medium">
+        {selectedHypotheses.length}件選択中
+      </span>
+      <button
+        onClick={() => setSelectedHypotheses([])}
+        className="text-sm text-indigo-600 hover:text-indigo-800 underline"
+      >
+        選択解除
+      </button>
+    </div>
+    <button
+      onClick={() => setShowDeleteConfirm(true)}
+      className="inline-flex items-center gap-1 px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-lg transition-colors"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      </svg>
+      <span>削除</span>
+    </button>
+  </div>
+)}
           {/* フィルターと表示コントロール */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <div className="flex flex-col md:flex-row gap-4 mb-4">
@@ -616,6 +781,14 @@ export default function HypothesisList() {
                 <table className="min-w-full divide-y divide-slate-200">
                   <thead className="bg-slate-50">
                     <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                        <input
+                          type="checkbox"
+                          checked={selectedHypotheses.length === filteredHypotheses.length && filteredHypotheses.length > 0}
+                          onChange={toggleSelectAll}
+                          className="h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                        />
+                      </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">仮説</th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">優先度</th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">関連付け</th>
@@ -641,6 +814,14 @@ export default function HypothesisList() {
                           variants={item}
                           className="hover:bg-slate-50"
                         >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={selectedHypotheses.includes(h.id)}
+                              onChange={() => toggleHypothesisSelection(h.id)}
+                              className="h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                            />
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-slate-900">{h.title}</div>
                           </td>
@@ -713,11 +894,19 @@ export default function HypothesisList() {
                   <motion.li
                     key={h.id}
                     variants={item}
-                    className="bg-white border border-slate-100 rounded-2xl shadow-sm p-6 space-y-4 hover:shadow-md transition-all duration-300 hover:border-indigo-200 group"
+                    className="bg-white border border-slate-100 rounded-2xl shadow-sm p-6 space-y-4 hover:shadow-md transition-all duration-300 hover:border-indigo-200 group relative"
                   >
+                    <div className="absolute top-4 left-4 z-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedHypotheses.includes(h.id)}
+                        onChange={() => toggleHypothesisSelection(h.id)}
+                        className="h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                      />
+                    </div>
                     <div className="space-y-2">
                       <div className="flex justify-between items-start">
-                        <h2 className="text-lg font-semibold text-slate-800 line-clamp-2 group-hover:text-indigo-700 transition-colors">{h.title}</h2>
+                        <h2 className="text-lg font-semibold text-slate-800 line-clamp-2 group-hover:text-indigo-700 transition-colors ml-4">{h.title}</h2>
                         <span className={classNames('inline-flex items-center text-xs px-2.5 py-1 rounded-full font-medium', priorityColor)}>
                           優先度 {priorityLabel}
                         </span>
