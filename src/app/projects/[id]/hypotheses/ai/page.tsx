@@ -18,6 +18,8 @@ export default function AiHypothesisPage() {
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]) // 複数選択用の配列
   const [filterType, setFilterType] = useState<string | null>(null)
   const [savingStatus, setSavingStatus] = useState<string>('') // 保存状態のメッセージ
+  const [generationMode, setGenerationMode] = useState('balanced') // 生成モード
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false) // 詳細設定表示
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,7 +33,7 @@ export default function AiHypothesisPage() {
       const res = await fetch('/api/hypotheses/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ context, project_id: projectId, count })
+        body: JSON.stringify({ context, project_id: projectId, count, mode: generationMode })
       })
 
       const data = await res.json()
@@ -205,35 +207,110 @@ export default function AiHypothesisPage() {
 - 月額制アプリを想定しているが価格に不安あり`}
         />
 
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-slate-700">生成する仮説の数:</label>
-            <select
-              value={count}
-              onChange={(e) => setCount(Number(e.target.value))}
-              className="border border-slate-300 rounded p-1 text-sm"
-            >
-              {[1, 2, 3, 4, 5].map(n => (
-                <option key={n} value={n}>{n}件</option>
-              ))}
-            </select>
-          </div>
+        {/* 詳細設定の開閉ボタン */}
+        <button
+          type="button"
+          onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+          className="text-indigo-600 text-sm flex items-center gap-1 hover:text-indigo-800"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${showAdvancedOptions ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+          詳細設定 {showAdvancedOptions ? '（閉じる）' : '（開く）'}
+        </button>
 
-          <button
-            type="submit"
-            className="bg-indigo-600 text-white px-5 py-2 rounded-full hover:bg-indigo-700 transition-all flex items-center gap-2"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                生成中...
-              </>
-            ) : (
-              '仮説を生成する'
-            )}
-          </button>
-        </div>
+        {/* 詳細設定パネル */}
+        {showAdvancedOptions && (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                仮説生成モード
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div
+                  onClick={() => setGenerationMode('balanced')}
+                  className={`cursor-pointer border rounded-lg p-3 ${
+                    generationMode === 'balanced' 
+                      ? 'border-indigo-300 bg-indigo-50 ring-2 ring-indigo-100' 
+                      : 'border-slate-200 hover:border-indigo-200'
+                  }`}
+                >
+                  <div className="font-medium text-slate-800 mb-1 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                    バランス型
+                  </div>
+                  <p className="text-xs text-slate-600">影響度と不確実性のバランスが取れた仮説を生成します</p>
+                </div>
+                
+                <div
+                  onClick={() => setGenerationMode('high-impact')}
+                  className={`cursor-pointer border rounded-lg p-3 ${
+                    generationMode === 'high-impact' 
+                      ? 'border-rose-300 bg-rose-50 ring-2 ring-rose-100' 
+                      : 'border-slate-200 hover:border-rose-200'
+                  }`}
+                >
+                  <div className="font-medium text-slate-800 mb-1 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    高インパクト優先
+                  </div>
+                  <p className="text-xs text-slate-600">成功時の影響が大きい仮説を優先的に生成します</p>
+                </div>
+                
+                <div
+                  onClick={() => setGenerationMode('strategic')}
+                  className={`cursor-pointer border rounded-lg p-3 ${
+                    generationMode === 'strategic' 
+                      ? 'border-amber-300 bg-amber-50 ring-2 ring-amber-100' 
+                      : 'border-slate-200 hover:border-amber-200'
+                  }`}
+                >
+                  <div className="font-medium text-slate-800 mb-1 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    戦略的仮説ツリー
+                  </div>
+                  <p className="text-xs text-slate-600">仮説ツリーの基幹となる根本的な仮説を生成します</p>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                生成する仮説の数
+              </label>
+              <select
+                value={count}
+                onChange={(e) => setCount(Number(e.target.value))}
+                className="border border-slate-300 rounded-lg p-2 text-sm w-full md:w-1/3"
+              >
+                {[1, 2, 3, 4, 5].map(n => (
+                  <option key={n} value={n}>{n}件</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          className="bg-indigo-600 text-white px-5 py-2 rounded-full hover:bg-indigo-700 transition-all flex items-center gap-2"
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              生成中...
+            </>
+          ) : (
+            '仮説を生成する'
+          )}
+        </button>
       </form>
 
       {error && (
@@ -296,6 +373,9 @@ export default function AiHypothesisPage() {
             {filteredResults.map((result, index) => {
               const isSelected = selectedIndices.includes(index);
               
+              const isHighValue = normalizeScore(result.impact) >= 4 && normalizeScore(result.uncertainty) >= 4;
+              const isStrategic = result.tree_level === '基幹';
+              
               return (
                 <div 
                   key={index}
@@ -303,6 +383,12 @@ export default function AiHypothesisPage() {
                     isSelected 
                       ? 'border-indigo-400 ring-2 ring-indigo-100' 
                       : 'border-slate-200 hover:border-indigo-200'
+                  } ${
+                    isHighValue 
+                      ? 'bg-gradient-to-br from-white to-amber-50' 
+                      : isStrategic 
+                        ? 'bg-gradient-to-br from-white to-violet-50' 
+                        : ''
                   }`}
                 >
                   <div className="flex justify-between items-start mb-4">
@@ -319,6 +405,22 @@ export default function AiHypothesisPage() {
                       </button>
                       <h3 className="text-lg font-medium text-slate-800">{result.title}</h3>
                     </div>
+                    {isHighValue && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-700 font-medium flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                        </svg>
+                        高価値
+                      </span>
+                    )}
+                    {isStrategic && (
+                      <span className="px-2 py-1 text-xs rounded-full bg-violet-100 text-violet-700 font-medium flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM14 11a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1h-1a1 1 0 110-2h1v-1a1 1 0 011-1z" />
+                        </svg>
+                        基幹仮説
+                      </span>
+                    )}
                     <span className="px-2 py-1 text-xs rounded-full bg-indigo-50 text-indigo-700 font-medium">
                       {result.type}
                     </span>
@@ -341,10 +443,25 @@ export default function AiHypothesisPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-4 mb-4">
-                    {renderScoreStars(normalizeScore(result.impact), '影響度')}
-                    {renderScoreStars(normalizeScore(result.uncertainty), '不確実性')}
-                    {renderScoreStars(normalizeScore(result.confidence), '確信度')}
+                  <div className="mb-4">
+                    <div className="flex flex-wrap gap-4 mb-2">
+                      {renderScoreStars(normalizeScore(result.impact), '影響度')}
+                      {renderScoreStars(normalizeScore(result.uncertainty), '不確実性')}
+                      {renderScoreStars(normalizeScore(result.confidence), '確信度')}
+                    </div>
+                    
+                    {/* インパクト×不確実性のマトリックス表示 */}
+                    {isHighValue && (
+                      <div className="bg-amber-50 border border-amber-100 rounded-lg p-2 text-xs text-amber-800">
+                        この仮説は<strong>高インパクト×高不確実性</strong>の組み合わせで、検証価値が高いと考えられます
+                      </div>
+                    )}
+                    
+                    {isStrategic && (
+                      <div className="bg-violet-50 border border-violet-100 rounded-lg p-2 text-xs text-violet-800">
+                        この仮説は<strong>基幹的な位置づけ</strong>で、複数の派生仮説の検証につながる可能性があります
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex gap-2">

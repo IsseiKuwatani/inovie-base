@@ -9,7 +9,7 @@ const supabase = createClient(
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { context, project_id, count = 3 } = body // 仮説生成数のパラメータを追加
+    const { context, project_id, count = 3, mode = 'balanced' } = body // モードパラメータを追加
 
     if (!context || typeof context !== 'string') {
       return NextResponse.json({ error: '不正な入力です' }, { status: 400 })
@@ -30,7 +30,44 @@ export async function POST(req: Request) {
     const hypothesisList = (hypotheses || [])
       .map(h => `${h.title}（${h.type}）`).join(', ') || 'なし'
 
-    // プロンプトを修正して複数仮説を生成するよう指示
+    // モードに基づいた指示テキストを作成
+    let modeInstruction = '';
+    switch (mode) {
+      case 'high-impact':
+        modeInstruction = `
+          あなたの重要な役割は「インパクトが大きく、不確実性が高い仮説」を優先的に生成することです。
+          以下の基準で評価してください：
+          - 影響度（Impact）: 5段階で、その仮説が正しかった場合のビジネスへの影響度
+          - 不確実性（Uncertainty）: 5段階で、その仮説の不確実さの度合い
+          
+          特に影響度と不確実性がともに高い（4以上）仮説を優先して提案してください。
+          この組み合わせは、検証の価値が最も高い仮説です。
+        `;
+        break;
+      case 'strategic':
+        modeInstruction = `
+          あなたの重要な役割は「仮説ツリーの根本となるような戦略的な基幹仮説」を生成することです。
+          基幹仮説とは：
+          - プロジェクトの根本的な成功要因や市場の本質に関わるもの
+          - 複数の派生仮説を生み出す可能性が高いもの
+          - 検証結果により大きな方向転換の判断ができるもの
+          
+          仮説には「この仮説は他の○○や△△といった仮説の検証につながる可能性があります」といった
+          派生可能性の説明を expected_effect に含めてください。
+        `;
+        break;
+      default: // balanced
+        modeInstruction = `
+          バランスの取れた多様な仮説を生成してください。
+          以下の観点から様々なタイプの仮説を含めることが重要です：
+          - 影響度と不確実性のバランス
+          - 異なる仮説タイプ（課題、価値、市場、価格、チャネル）
+          - 短期的・長期的な視点
+        `;
+        break;
+    }
+
+    // 改良されたプロンプト
     const prompt = `
     以下はプロジェクト「${project?.name || '名称未設定'}」に関する仮説検討です。
     
@@ -42,6 +79,9 @@ export async function POST(req: Request) {
     
     【ユーザーが追加で検討したい内容】
     ${context}
+    
+    【仮説生成モード】
+    ${modeInstruction}
     
     この情報をもとに、以下の形式で **異なるアプローチの仮説を${count}件** JSON配列形式で出力してください。
     各仮説は異なる視点や解決アプローチを持つようにしてください。
@@ -63,7 +103,8 @@ export async function POST(req: Request) {
         "status": "未検証",
         "impact": 数値（1〜5）, // 実現時の影響度
         "uncertainty": 数値（1〜5）, // 不確実性の高さ
-        "confidence": 数値（1〜5） // 検証前の確信度
+        "confidence": 数値（1〜5）, // 検証前の確信度
+        "tree_level": "${mode === 'strategic' ? '基幹' : '通常'}" // 仮説ツリーでの位置づけ
       },
       // 合計${count}件の異なる仮説
     ]
