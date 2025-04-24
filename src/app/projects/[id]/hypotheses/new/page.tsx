@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { XCircle, Lightbulb, GripHorizontal, ChevronRight, AlertCircle, HelpCircle } from 'lucide-react'
 
 export default function NewHypothesisPage() {
   const { id: projectId } = useParams()
+  const searchParams = useSearchParams()
   const router = useRouter()
 
   const [form, setForm] = useState({
@@ -26,6 +27,31 @@ export default function NewHypothesisPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const hintRef = useRef<HTMLDivElement>(null)
+
+  // クエリからAI生成データを受け取ってフォームに反映
+  useEffect(() => {
+    const aiData = searchParams.get('from_ai')
+    if (aiData) {
+      try {
+        const parsed = JSON.parse(decodeURIComponent(aiData))
+        setForm((prev) => ({
+          ...prev,
+          title: parsed.title || '',
+          assumption: parsed.premise || '',
+          solution: parsed.solution || '',
+          expected_effect: parsed.expected_effect || '',
+          type: parsed.type || '課題仮説',
+          status: parsed.status || '未検証',
+          impact: parsed.impact ?? 3,
+          uncertainty: parsed.uncertainty ?? 3,
+          confidence: parsed.confidence ?? 3,
+        }))
+      } catch (e) {
+        console.error('仮説データの読み込みに失敗しました', e)
+      }
+    }
+  }, [searchParams])
+
 
   useEffect(() => {
     const hint = hintRef.current
