@@ -267,7 +267,7 @@ export default function ProjectSidebar() {
               仮説ツリーマップ
             </ProjectNavItem>
             <ProjectNavItem 
-              href={`/projects/${projectId}/hypothesis-roadmap`}
+              href={`/projects/${projectId}/roadmap`}
               icon={<AudioWaveform size={18} />}
               isActive={activeSection === 'tree-map'}
             >
