@@ -129,16 +129,23 @@ export default function ProjectSidebar() {
       });
       
       // 仮説関連
-      if (segments.includes('tree-map')) {
+      if (segments.includes('roadmap')) {
+        breadcrumbs.push({
+          href: `/projects/${projectId}/hypotheses/roadmap`,
+          label: 'ロードマップ'
+        });
+    } else if (segments.includes('tree-map')) {
         breadcrumbs.push({
           href: `/projects/${projectId}/hypotheses/tree-map`,
           label: 'ツリーマップ'
         });
+     
       } else if (segments.includes('map')) {
         breadcrumbs.push({
           href: `/projects/${projectId}/hypotheses/map`,
           label: 'マップ表示'
         });
+
       } else if (segments.includes('new')) {
         breadcrumbs.push({
           href: `/projects/${projectId}/hypotheses/new`,
@@ -269,7 +276,7 @@ export default function ProjectSidebar() {
             <ProjectNavItem 
               href={`/projects/${projectId}/roadmap`}
               icon={<AudioWaveform size={18} />}
-              isActive={activeSection === 'tree-map'}
+              isActive={activeSection === 'roadmap'}
             >
               仮説ロードマップ
             </ProjectNavItem>
