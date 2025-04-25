@@ -32,7 +32,7 @@ export default function HypothesisEvolutionPage() {
           .from('hypothesis_versions')
           .select(`
             *,
-            user_profile:updated_by(name),
+            user_profile:updated_by(display_name),
             validation:based_on_validation_id(
               id, method, learnings, confidence_level, created_at
             )

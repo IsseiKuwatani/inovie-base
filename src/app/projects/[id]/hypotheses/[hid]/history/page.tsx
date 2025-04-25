@@ -22,7 +22,7 @@ type HypothesisVersion = {
   based_on_validation_id?: string;
   updated_by?: string;
   user_profile?: {
-    name?: string;
+    display_name?: string;
   };
   validation?: {
     method?: string;
@@ -57,7 +57,7 @@ export default function HypothesisHistoryPage() {
           .from('hypothesis_versions')
           .select(`
             *,
-            user_profile:updated_by(name),
+            user_profile:updated_by(display_name),
             validation:based_on_validation_id(method, learnings)
           `)
           .eq('hypothesis_id', hypothesisId)
@@ -228,10 +228,10 @@ export default function HypothesisHistoryPage() {
                     <span>{new Date(version.updated_at).toLocaleTimeString('ja-JP')}</span>
                   </div>
                   
-                  {version.user_profile?.name && (
+                  {version.user_profile?.display_name && (
                     <div className="flex items-center gap-1">
                       <User size={14} />
-                      <span>{version.user_profile.name}</span>
+                      <span>{version.user_profile.display_name}</span>
                     </div>
                   )}
                 </div>
