@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import { Loader2, Trophy, Star, CheckCircle, X, Plus, ArrowRight,Settings } from 'lucide-react'
+import { Loader2, Trophy, Star, CheckCircle, X, Plus, ArrowRight, Settings, FlaskConical } from 'lucide-react'
 import Link from 'next/link'
 
 
@@ -39,9 +39,9 @@ export default function HypothesisRoadmapPage() {
   const [projectInfo, setProjectInfo] = useState<{name: string, description: string} | null>(null);
   const [roadmapHypotheses, setRoadmapHypotheses] = useState<RoadmapHypothesis[]>([]);
   const [hasRoadmap, setHasRoadmap] = useState(false);
-  const [allVerifications, setAllVerifications] = useState<Array<{
+  const [allValidations, setAllValidations] = useState<Array<{
     id: string;
-    hypotheses_id: string;
+    hypothesis_id: string;
     result: string;
     evidence: string;
     created_at: string;
@@ -112,21 +112,21 @@ export default function HypothesisRoadmapPage() {
         setHasRoadmap(true);
         
         // 検証記録の取得（各仮説の検証数をカウントするため）
-        const { data: verifications, error: verificationsError } = await supabase
+        const { data: validations, error: validationsError } = await supabase
           .from('validations')
           .select('*')
           .in('hypothesis_id', hypotheses.map((h: RoadmapHypothesis) => h.id));
           
-        if (verificationsError) {
-          console.error('検証データ取得エラー:', verificationsError);
+        if (validationsError) {
+          console.error('検証データ取得エラー:', validationsError);
           throw new Error('検証データの取得に失敗しました');
         }
-        setAllVerifications(verifications || []);
+        setAllValidations(validations || []);
           
         // 各仮説の検証数をカウント
         const hypothesesWithCounts = hypotheses.map((h: RoadmapHypothesis) => {
-          const verificationCount = verifications 
-            ? verifications.filter((v: {hypotheses_id: string}) => v.hypotheses_id === h.id).length 
+          const verificationCount = validations 
+            ? validations.filter((v) => v.hypothesis_id === h.id).length 
             : 0;
             
           // 優先度の計算（影響度×不確実性）
@@ -152,37 +152,56 @@ export default function HypothesisRoadmapPage() {
     }
   }, [projectId]);
   
+  // 仮説ステータスを視覚的に表示するためのヘルパー関数を追加
+  const getHypothesisStatusBadge = (status: string) => {
+    switch (status) {
+      case '成立':
+        return <span className="px-2 py-1 text-xs rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">成立</span>;
+      case '否定':
+        return <span className="px-2 py-1 text-xs rounded-full bg-rose-100 text-rose-700 border border-rose-200">否定</span>;
+      case '検証中':
+        return <span className="px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-700 border border-amber-200">検証中</span>;
+      default:
+        return <span className="px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-700 border border-slate-200">未検証</span>;
+    }
+  };
+  
   // 仮説のステータスに基づいて現在のステップを判断
   const getCurrentStepIndex = (): number => {
-    const verifiedIndex = roadmapHypotheses.findIndex((h: RoadmapHypothesis) => 
-      h.verifications_count !== undefined && h.verifications_count > 0
-    );
+    // すべての検証が始まっている仮説（成立、否定または検証中）のインデックスを取得
+    const activeIndices = roadmapHypotheses
+      .map((h, index) => ({ 
+        index, 
+        active: h.verifications_count && h.verifications_count > 0 
+      }))
+      .filter(item => item.active)
+      .map(item => item.index);
     
-    if (verifiedIndex === -1) return 0; // どの仮説も検証されていない場合は最初のステップ
+    if (activeIndices.length === 0) return 0; // アクティブな仮説がない場合は最初のステップ
     
-    // 連続して検証されている最後のステップを探す
-    let currentIndex = 0;
-    for (let i = 0; i <= verifiedIndex; i++) {
-      const hypotheses = roadmapHypotheses[i];
-      if (hypotheses && hypotheses.verifications_count && hypotheses.verifications_count > 0) {
-        currentIndex = i + 1;
-        if (currentIndex >= roadmapHypotheses.length) {
-          currentIndex = roadmapHypotheses.length - 1;
-        }
-      } else {
-        break;
-      }
+    // 最後のアクティブな仮説の次のステップを現在のステップとする
+    const lastActiveIndex = Math.max(...activeIndices);
+    let nextIndex = lastActiveIndex + 1;
+    
+    // 範囲内に収める
+    if (nextIndex >= roadmapHypotheses.length) {
+      nextIndex = roadmapHypotheses.length - 1;
     }
     
-    return currentIndex;
+    return nextIndex;
   };
   
   // 仮説の検証ステータスを取得
-  const getHypothesisStatus = (hypotheses: RoadmapHypothesis, index: number) => {
+  const getHypothesisStatus = (hypothesis: RoadmapHypothesis, index: number) => {
     const currentStep = getCurrentStepIndex();
     
-    if (hypotheses.verifications_count && hypotheses.verifications_count > 0) {
+    // 仮説が「成立」または「否定」の場合のみ完了とみなす
+    if ((hypothesis.status === '成立' || hypothesis.status === '否定') && 
+        hypothesis.verifications_count && hypothesis.verifications_count > 0) {
       return 'completed'; // 検証済み
+    } else if (hypothesis.verifications_count && hypothesis.verifications_count > 0) {
+      // 検証はされているが、まだ成立/否定になっていない（検証中）
+      return 'inProgress'; // 追加した状態
     } else if (index === currentStep) {
       return 'current'; // 現在のステップ
     } else if (index < currentStep) {
@@ -192,15 +211,28 @@ export default function HypothesisRoadmapPage() {
     }
   };
   
-  // 進捗率の計算
+  // 進捗率の計算 (成立または否定の仮説のみ完了とカウント)
   const calculateProgress = (): number => {
     if (roadmapHypotheses.length === 0) return 0;
     
-    const verifiedCount = roadmapHypotheses.filter((h: RoadmapHypothesis) => 
+    const completedCount = roadmapHypotheses.filter((h: RoadmapHypothesis) => 
+      (h.status === '成立' || h.status === '否定') &&
       h.verifications_count !== undefined && h.verifications_count > 0
     ).length;
     
-    return Math.round((verifiedCount / roadmapHypotheses.length) * 100);
+    return Math.round((completedCount / roadmapHypotheses.length) * 100);
+  };
+  
+  // 検証中の仮説の割合を計算
+  const calculateInProgressPercentage = (): number => {
+    if (roadmapHypotheses.length === 0) return 0;
+    
+    const inProgressCount = roadmapHypotheses.filter((h: RoadmapHypothesis) => 
+      h.status !== '成立' && h.status !== '否定' &&
+      h.verifications_count !== undefined && h.verifications_count > 0
+    ).length;
+    
+    return Math.round((inProgressCount / roadmapHypotheses.length) * 100);
   };
   
   // AIサポートページに移動して仮説ロードマップを作成
@@ -278,7 +310,22 @@ export default function HypothesisRoadmapPage() {
               <div>
                 <h3 className="text-xl font-bold mb-2">プロジェクト検証ロードマップ</h3>
                 <p className="text-indigo-100">
-                  {roadmapHypotheses.filter((h: RoadmapHypothesis) => h.verifications_count !== undefined && h.verifications_count > 0).length} / {roadmapHypotheses.length} ステップ完了
+                  {/* 成立または否定の仮説数 */}
+                  <span className="font-medium">
+                    {roadmapHypotheses.filter((h: RoadmapHypothesis) => 
+                      (h.status === '成立' || h.status === '否定') &&
+                      h.verifications_count !== undefined && h.verifications_count > 0
+                    ).length}
+                  </span>
+                  {" / "}
+                  {roadmapHypotheses.length} ステップ完了
+                  {/* 検証中の仮説数 */}
+                  <span className="ml-2">
+                    (検証中: {roadmapHypotheses.filter((h: RoadmapHypothesis) => 
+                      h.status !== '成立' && h.status !== '否定' &&
+                      h.verifications_count !== undefined && h.verifications_count > 0
+                    ).length}件)
+                  </span>
                 </p>
               </div>
               
@@ -290,12 +337,34 @@ export default function HypothesisRoadmapPage() {
               </div>
             </div>
             
-            {/* 進捗バー */}
-            <div className="mt-4 bg-indigo-300 bg-opacity-30 h-2 rounded-full overflow-hidden">
+            {/* 進捗バー - 進行中も視覚的に表示 */}
+            <div className="mt-4 bg-indigo-300 bg-opacity-30 h-2 rounded-full overflow-hidden relative">
+              {/* 完了した部分 */}
               <div 
-                className="bg-white h-full rounded-full" 
+                className="absolute top-0 left-0 bottom-0 bg-white rounded-full"
                 style={{ width: `${calculateProgress()}%` }}
               ></div>
+              
+              {/* 検証中の部分（別の色で表示） */}
+              <div
+                className="absolute top-0 bottom-0 bg-amber-300"
+                style={{ 
+                  width: `${calculateInProgressPercentage()}%`,
+                  left: `${calculateProgress()}%`
+                }}
+              ></div>
+            </div>
+            
+            {/* 進捗バーの凡例 */}
+            <div className="mt-2 flex items-center justify-end text-xs">
+              <div className="flex items-center mr-4">
+                <div className="w-3 h-3 bg-white rounded-full mr-1"></div>
+                <span>完了</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-amber-300 rounded-full mr-1"></div>
+                <span>検証中</span>
+              </div>
             </div>
           </div>
           
@@ -304,9 +373,9 @@ export default function HypothesisRoadmapPage() {
             {/* 左側の進捗線 */}
             <div className="absolute left-8 top-0 bottom-0 w-1 bg-slate-200"></div>
             
-            {roadmapHypotheses.map((hypotheses, index) => {
+            {roadmapHypotheses.map((hypothesis, index) => {
               // 仮説の状態を判断
-              const stepStatus = getHypothesisStatus(hypotheses, index);
+              const stepStatus = getHypothesisStatus(hypothesis, index);
               
               // ステップの状態に基づくスタイルとアイコンの決定
               let stepStyle = "";
@@ -314,16 +383,26 @@ export default function HypothesisRoadmapPage() {
               
               switch (stepStatus) {
                 case 'completed':
-                  stepStyle = "border-emerald-200 bg-emerald-50";
-                  statusIcon = <CheckCircle className="w-10 h-10 text-emerald-500" />;
+                  // 成立と否定で色を分ける
+                  if (hypothesis.status === '成立') {
+                    stepStyle = "border-emerald-200 bg-emerald-50";
+                    statusIcon = <CheckCircle className="w-10 h-10 text-emerald-500" />;
+                  } else { // 否定
+                    stepStyle = "border-rose-200 bg-rose-50";
+                    statusIcon = <CheckCircle className="w-10 h-10 text-rose-500" />;
+                  }
+                  break;
+                case 'inProgress': // 検証中の状態を追加
+                  stepStyle = "border-amber-200 bg-amber-50";
+                  statusIcon = <FlaskConical className="w-10 h-10 text-amber-500" />;
                   break;
                 case 'current':
                   stepStyle = "border-indigo-300 bg-indigo-50 ring-2 ring-indigo-100";
                   statusIcon = <Star className="w-10 h-10 text-indigo-500" />;
                   break;
                 case 'skipped':
-                  stepStyle = "border-amber-200 bg-amber-50";
-                  statusIcon = <ArrowRight className="w-10 h-10 text-amber-500" />;
+                  stepStyle = "border-slate-300 bg-slate-50";
+                  statusIcon = <ArrowRight className="w-10 h-10 text-slate-500" />;
                   break;
                 case 'locked':
                   stepStyle = "border-slate-200 bg-slate-50 opacity-70";
@@ -332,7 +411,7 @@ export default function HypothesisRoadmapPage() {
               }
               
               return (
-                <div key={hypotheses.id} className="relative ml-16 mb-8">
+                <div key={hypothesis.id} className="relative ml-16 mb-8">
                   {/* ステップアイコン (進捗線上に配置) */}
                   <div className="absolute -left-12 top-4 bg-white rounded-full p-1">
                     {statusIcon}
@@ -342,36 +421,39 @@ export default function HypothesisRoadmapPage() {
                   <div className={`border rounded-xl p-6 ${stepStyle}`}>
                     <div className="flex items-start justify-between mb-3">
                       <h3 className="text-lg font-bold text-slate-800">
-                        {index + 1}. {hypotheses.title}
+                        {index + 1}. {hypothesis.title}
                       </h3>
-                      <span className="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-700">
-                        {hypotheses.type}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {getHypothesisStatusBadge(hypothesis.status)}
+                        <span className="px-2 py-1 text-xs rounded-full bg-indigo-100 text-indigo-700">
+                          {hypothesis.type}
+                        </span>
+                      </div>
                     </div>
                     
                     <div className="space-y-3 mb-4">
                       <div>
                         <h4 className="text-sm font-medium text-slate-700">前提:</h4>
-                        <p className="text-sm text-slate-600">{hypotheses.assumption}</p>
+                        <p className="text-sm text-slate-600">{hypothesis.assumption}</p>
                       </div>
                       
                       <div>
                         <h4 className="text-sm font-medium text-slate-700">解決策:</h4>
-                        <p className="text-sm text-slate-600">{hypotheses.solution}</p>
+                        <p className="text-sm text-slate-600">{hypothesis.solution}</p>
                       </div>
                       
                       <div>
                         <h4 className="text-sm font-medium text-slate-700">期待される効果:</h4>
-                        <p className="text-sm text-slate-600">{hypotheses.expected_effect}</p>
+                        <p className="text-sm text-slate-600">{hypothesis.expected_effect}</p>
                       </div>
                     </div>
                     
                     {/* 検証方法 */}
-                    {hypotheses.verification_methods && hypotheses.verification_methods.length > 0 && (
+                    {hypothesis.verification_methods && hypothesis.verification_methods.length > 0 && (
                       <div className="mb-4">
                         <h4 className="text-sm font-medium text-slate-700 mb-2">推奨される検証方法:</h4>
                         <div className="flex flex-wrap gap-2">
-                          {hypotheses.verification_methods.map((method, i) => (
+                          {hypothesis.verification_methods.map((method, i) => (
                             <span key={i} className="px-2 py-1 text-xs rounded-full bg-slate-100 text-slate-700">
                               {method}
                             </span>
@@ -381,23 +463,23 @@ export default function HypothesisRoadmapPage() {
                     )}
                     
                     {/* 成功基準 */}
-                    {hypotheses.success_criteria && (
+                    {hypothesis.success_criteria && (
                       <div className="mb-4 bg-amber-50 border border-amber-100 rounded-lg p-3">
                         <h4 className="text-sm font-medium text-amber-800 mb-1">成功基準:</h4>
-                        <p className="text-sm text-amber-700">{hypotheses.success_criteria}</p>
+                        <p className="text-sm text-amber-700">{hypothesis.success_criteria}</p>
                       </div>
                     )}
                     
                     {/* 次のステップ情報 */}
-                    {hypotheses.next_steps && (
+                    {hypothesis.next_steps && (
                       <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3">
                           <h4 className="text-sm font-medium text-emerald-800 mb-1">検証成功時:</h4>
-                          <p className="text-sm text-emerald-700">{hypotheses.next_steps.success}</p>
+                          <p className="text-sm text-emerald-700">{hypothesis.next_steps.success}</p>
                         </div>
                         <div className="bg-rose-50 border border-rose-100 rounded-lg p-3">
                           <h4 className="text-sm font-medium text-rose-800 mb-1">検証失敗時:</h4>
-                          <p className="text-sm text-rose-700">{hypotheses.next_steps.failure}</p>
+                          <p className="text-sm text-rose-700">{hypothesis.next_steps.failure}</p>
                         </div>
                       </div>
                     )}
@@ -406,16 +488,16 @@ export default function HypothesisRoadmapPage() {
                     <div className="mt-4 flex gap-3">
                       {stepStatus === 'locked' ? (
                         <div className="text-sm text-slate-500 italic">
-                          前のステップを完了させると解除されます
+                          前のステップを検証すると解除されます
                         </div>
                       ) : stepStatus === 'completed' ? (
-                        <div className="flex items-center gap-2 text-emerald-600">
+                        <div className={`flex items-center gap-2 ${hypothesis.status === '成立' ? "text-emerald-600" : "text-rose-600"}`}>
                           <CheckCircle size={16} />
-                          <span>検証完了</span>
+                          <span>{hypothesis.status === '成立' ? '成立' : '否定'}</span>
                           
                           {projectId ? (
                             <Link 
-                              href={`/projects/${projectId}/hypotheses/${hypotheses.id}`}
+                              href={`/projects/${projectId}/hypotheses/${hypothesis.id}`}
                               className="ml-auto text-indigo-600 hover:text-indigo-800"
                             >
                               詳細を見る →
@@ -426,13 +508,25 @@ export default function HypothesisRoadmapPage() {
                             </span>
                           )}
                         </div>
-                      ) : stepStatus === 'skipped' ? (
+                      ) : stepStatus === 'inProgress' ? (
                         <div className="flex items-center gap-2 text-amber-600">
+                          <FlaskConical size={16} />
+                          <span>検証中</span>
+                          
+                          <Link 
+                            href={`/projects/${projectId}/hypotheses/${hypothesis.id}`}
+                            className="ml-auto text-indigo-600 hover:text-indigo-800"
+                          >
+                            詳細を見る →
+                          </Link>
+                        </div>
+                      ) : stepStatus === 'skipped' ? (
+                        <div className="flex items-center gap-2 text-slate-600">
                           <ArrowRight size={16} />
                           <span>このステップはスキップされました</span>
                           
                           <Link 
-                            href={`/projects/${projectId}/hypotheses/${hypotheses.id}`}
+                            href={`/projects/${projectId}/hypotheses/${hypothesis.id}`}
                             className="ml-auto text-indigo-600 hover:text-indigo-800"
                           >
                             詳細を見る →
@@ -442,7 +536,7 @@ export default function HypothesisRoadmapPage() {
                         <>
                           {/* 現在のステップの場合 */}
                           <Link
-                            href={`/projects/${projectId}/hypotheses/${hypotheses.id}`}
+                            href={`/projects/${projectId}/hypotheses/${hypothesis.id}`}
                             className="flex-1 bg-indigo-600 text-white px-4 py-2 rounded-full hover:bg-indigo-700 flex items-center justify-center gap-2"
                           >
                             <Plus size={16} />
@@ -483,17 +577,44 @@ export default function HypothesisRoadmapPage() {
             )}
           </div>
           
+          {/* 仮説ステータスの説明 */}
+          <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-3 mb-6">
+            <h3 className="font-medium text-slate-800">仮説ステータスの説明</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
+                <span className="text-slate-700"><strong className="text-emerald-700">成立</strong>: 仮説が検証され正しいと確認された状態</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-rose-500 rounded-full"></div>
+                <span className="text-slate-700"><strong className="text-rose-700">否定</strong>: 仮説が検証され誤りだと確認された状態</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
+                <span className="text-slate-700"><strong className="text-amber-700">検証中</strong>: 検証が進行中で結論が出ていない状態</span>
+              </div>
+            </div>
+          </div>
+          
           {/* ロードマップに関する説明 */}
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 text-sm text-slate-600 mt-8">
+          <div className="bg-slate-50 border border-slate-100 rounded-xl p-6">
             <h3 className="font-medium text-slate-800 mb-2">仮説ロードマップについて</h3>
-            <p className="mb-2">
+            <p className="mb-2 text-sm text-slate-600">
               仮説ロードマップは、プロジェクト成功に必要な検証ステップを順序立てて整理したものです。
               各ステップの仮説を順番に検証していくことで、効率的にプロジェクトの不確実性を減らしていくことができます。
             </p>
-            <p>
-              上記の仮説は標準的な検証フローに沿って生成されています。
+            <p className="text-sm text-slate-600">
+            上記の仮説は標準的な検証フローに沿って生成されています。
               各仮説の詳細ページでは、検証結果を記録したり、仮説をバージョンアップすることができます。
+              検証が開始されると次のステップに進めますが、最終的な判断（成立または否定）が行われることで仮説が完了したとみなされます。
             </p>
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <p className="text-sm text-slate-600">
+                <strong className="text-slate-700">ロードマップの進め方のヒント:</strong> 各ステップは単に順番に検証するだけでなく、
+                得られた学びを次の仮説検証に活かしていくことが重要です。
+                否定された仮説からも貴重な学びが得られ、それが次の成功につながることがあります。
+              </p>
+            </div>
           </div>
         </div>
       )}

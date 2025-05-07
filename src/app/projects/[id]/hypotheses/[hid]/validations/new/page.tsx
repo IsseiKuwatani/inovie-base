@@ -36,7 +36,8 @@ export default function NewValidationPage() {
     result: '',
     confidence_level: 3,
     learnings: '',
-    next_steps: ''
+    next_steps: '',
+    // 仮説ステータスの明示的な変更はしない
   })
 
   useEffect(() => {
@@ -92,17 +93,8 @@ export default function NewValidationPage() {
 
       if (error) throw new Error(error.message)
       
-      // 仮説のステータスを更新
-      const shouldUpdateStatus = window.confirm('仮説のステータスを更新しますか？');
-      if (shouldUpdateStatus) {
-        const { error: updateError } = await supabase
-          .from('hypotheses')
-          .update({ status: getRecommendedStatus() })
-          .eq('id', hypothesisId);
-          
-        if (updateError) console.error('ステータス更新エラー:', updateError);
-      }
-      
+      // 仮説ステータス更新ダイアログは表示しない
+      // 検証登録後は詳細ページに戻るだけ
       router.push(`/projects/${projectId}/hypotheses/${hypothesisId}`)
     } catch (err: any) {
       setError('検証の保存に失敗しました: ' + (err.message || ''))
@@ -110,16 +102,6 @@ export default function NewValidationPage() {
     }
   }
   
-  // 検証結果に基づいて推奨ステータスを取得
-  const getRecommendedStatus = () => {
-    if (form.confidence_level >= 4) {
-      return form.result.toLowerCase().includes('成功') || 
-             form.result.toLowerCase().includes('確認') ? 
-             '成立' : '否定';
-    }
-    return '検証中';
-  }
-
   // 確信度に応じた色を取得
   const getConfidenceColor = (level: number) => {
     if (level >= 4) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
