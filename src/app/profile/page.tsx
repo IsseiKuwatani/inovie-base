@@ -29,8 +29,9 @@ type UserProfile = {
   organization?: {
     id: string;
     name: string;
-  };
-}
+  } | null;
+};
+
 
 export default function MyPage() {
   const [authUser, setAuthUser] = useState<any>(null)
@@ -51,61 +52,95 @@ export default function MyPage() {
   useEffect(() => {
     const fetchUserAndProfile = async () => {
       try {
-        setLoading(true)
-        // ユーザー認証情報を取得
-        const { data } = await supabase.auth.getSession()
-        if (!data.session?.user) {
-          router.push('/login')
-          return
+        setLoading(true);
+  
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        const user = sessionData?.session?.user;
+  
+        if (!user) {
+          router.push('/login');
+          return;
         }
-        
-        setAuthUser(data.session.user)
-        
-        // プロフィール情報を取得
+  
+        setAuthUser(user);
+  
+        // プロフィール取得
         const { data: profileData, error: profileError } = await supabase
           .from('user_profiles')
-          .select('*')
-          .eq('id', data.session.user.id)
-          .single()
-        
-        if (profileError) {
-          console.error('プロフィール取得エラー:', profileError)
-          // ユーザープロフィールがない場合は、新規作成するかエラー表示
-          setError('プロフィール情報の取得に失敗しました')
-          return
-        }
-        
-        // プロフィールが取得できたら、組織情報も取得
-        if (profileData && profileData.organization_id) {
-          const { data: orgData } = await supabase
-            .from('organizations')
-            .select('id, name')
-            .eq('id', profileData.organization_id)
-            .single()
-            
-          if (orgData) {
-            profileData.organization = orgData
-          }
-        }
-        
-        setProfile(profileData)
-        
-        // フォーム初期値を設定
-        setDisplayName(profileData?.display_name || '')
-        setPhone(profileData?.phone || '')
-        setPosition(profileData?.position || '')
-        setDepartment(profileData?.department || '')
-        
-      } catch (err: any) {
-        console.error('データ取得エラー:', err)
-        setError('情報の取得に失敗しました')
-      } finally {
-        setLoading(false)
-      }
-    }
+          .select('id, email, display_name, phone, position, department, organization_id')
+          .eq('id', user.id)
+          .maybeSingle();
+  
+          let currentProfile = profileData;
 
-    fetchUserAndProfile()
-  }, [router])
+          if (!currentProfile) {
+            const { data: newProfile, error: createError } = await supabase
+              .from('user_profiles')
+              .insert({
+                id: user.id,
+                email: user.email,
+                display_name: user.email?.split('@')[0] || 'ユーザー'
+              })
+              .select()
+              .single();
+          
+            if (createError || !newProfile) {
+              console.error('プロフィール作成エラー:', createError);
+              setError('プロフィールの作成に失敗しました');
+              return;
+            }
+          
+            currentProfile = newProfile;
+          }
+          
+          // この位置で nullチェックを入れる
+          if (!currentProfile) {
+            setError('プロフィールの取得に失敗しました');
+            return;
+          }
+          
+          // ↓ ここから先は currentProfile は null ではないと保証される
+          let organizationInfo: { id: string; name: string } | null = null;
+          if (currentProfile.organization_id) {
+            const { data: orgData, error: orgError } = await supabase
+              .from('organizations')
+              .select('id, name')
+              .eq('id', currentProfile.organization_id)
+              .maybeSingle();
+          
+            if (orgData) {
+              organizationInfo = orgData;
+            } else {
+              console.error('組織情報取得エラー:', orgError);
+            }
+          }
+  
+        // プロフィールとフォーム初期値を設定
+        setProfile({
+          id: currentProfile.id,
+          email: currentProfile.email,
+          display_name: currentProfile.display_name,
+          phone: currentProfile.phone,
+          position: currentProfile.position,
+          department: currentProfile.department,
+          organization_id: currentProfile.organization_id,
+          organization: organizationInfo
+        });
+  
+        setDisplayName(currentProfile.display_name || '');
+        setPhone(currentProfile.phone || '');
+        setPosition(currentProfile.position || '');
+        setDepartment(currentProfile.department || '');
+      } catch (err: any) {
+        console.error('データ取得エラー:', err);
+        setError('情報の取得に失敗しました');
+      } finally {
+        setLoading(false);
+      }
+    };
+  
+    fetchUserAndProfile();
+  }, [router]);
 
   // プロフィール更新
   const updateProfile = async (e: React.FormEvent) => {
