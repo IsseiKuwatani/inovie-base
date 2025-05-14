@@ -101,12 +101,24 @@ export default function NewHypothesisPage() {
     e.preventDefault()
     setError('')
     setIsSubmitting(true)
-    
+  
+    const payload = {
+      title: form.title,
+      type: form.type,
+      status: form.status,
+      impact: Number(form.impact),
+      uncertainty: Number(form.uncertainty),
+      confidence: Number(form.confidence),
+      assumption: form.assumption || '',
+      solution: form.solution || '',
+      expected_effect: form.expected_effect || '',
+      project_id: projectId,
+    }
+  
     try {
-      const { error: insertError } = await supabase.from('hypotheses').insert([{ ...form, project_id: projectId }])
-      if (insertError) {
-        throw new Error(insertError.message)
-      }
+      const { error: insertError } = await supabase.from('hypotheses').insert([payload])
+      if (insertError) throw new Error(insertError.message)
+  
       router.push(`/projects/${projectId}`)
     } catch (err: any) {
       setError('仮説の作成に失敗しました: ' + (err.message || ''))

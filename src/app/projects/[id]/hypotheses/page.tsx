@@ -105,10 +105,20 @@ export default function HypothesisList() {
     const fetchHypotheses = async () => {
       setIsLoading(true)
       const { data, error } = await supabase
-        .from('hypotheses')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false })
+      .from('hypotheses')
+      .select(`
+        id,
+        title,
+        type,
+        status,
+        impact,
+        uncertainty,
+        confidence,
+        created_at,
+        project_id
+      `)
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
 
       if (!error && data) {
         const withPriority = data.map((h) => ({
