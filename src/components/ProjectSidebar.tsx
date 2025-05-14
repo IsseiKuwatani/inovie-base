@@ -18,7 +18,8 @@ import {
   Clock,
   Layers,
   BarChart3,
-  AudioWaveform
+  AudioWaveform,
+  FileText
 } from 'lucide-react'
 
 export default function ProjectSidebar() {
@@ -38,6 +39,8 @@ export default function ProjectSidebar() {
       setActiveSection('map')
     } else if (pathname?.includes('/hypotheses')) {
       setActiveSection('hypotheses')
+    } else if (pathname?.includes('/reports')) {
+      setActiveSection('reports')
     } else if (pathname?.includes('/timeline')) {
       setActiveSection('timeline')
     } else if (pathname?.includes('/settings')) {
@@ -243,6 +246,13 @@ export default function ProjectSidebar() {
               isActive={activeSection === 'timeline'}
             >
               タイムライン
+            </ProjectNavItem>
+            <ProjectNavItem 
+              href={`/projects/${projectId}/reports`}
+              icon={<FileText size={18} />}
+              isActive={activeSection === 'reports'}
+            >
+              レポート
             </ProjectNavItem>
           </div>
         </div>

@@ -24,3 +24,31 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@media print {
+  body {
+    background: white;
+    font-size: 12pt;
+  }
+  
+  .print-hidden {
+    display: none !important;
+  }
+  
+  .report-content {
+    page-break-inside: avoid;
+  }
+  
+  h1, h2, h3, h4 {
+    page-break-after: avoid;
+  }
+  
+  table {
+    page-break-inside: avoid;
+  }
+  
+  img {
+    page-break-inside: avoid;
+    max-height: 500px;
+  }
+}
