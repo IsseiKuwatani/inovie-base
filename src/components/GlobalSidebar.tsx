@@ -35,7 +35,6 @@ type UserProfile = {
   organization?: {
     id: string;
     name: string;
-    logo_url: string | null;
   } | null;
 }
 
@@ -77,7 +76,7 @@ useEffect(() => {
       if (profileData?.organization_id) {
         const { data: orgData } = await supabase
           .from('organizations')
-          .select('id, name, logo_url')
+          .select('id, name')
           .eq('id', profileData.organization_id)
           .single()
         

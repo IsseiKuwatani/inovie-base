@@ -115,93 +115,72 @@ export default function ProjectList() {
   }, [])
   
   // プロジェクト一覧の取得
-  const fetchProjects = async () => {  // 引数なしの関数定義
+  const fetchProjects = async () => {
     try {
-      setLoading(true);
-      setErrorMsg(''); // エラーメッセージをクリア
-      
-      // ユーザー情報を取得
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      
-      if (userError) {
-        console.error('ユーザー情報取得エラー:', userError);
-        setErrorMsg('ユーザー情報の取得に失敗しました');
-        return;
+      setLoading(true)
+      setErrorMsg('')
+  
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        console.error('ユーザー情報取得エラー:', userError)
+        setErrorMsg('ユーザー情報の取得に失敗しました')
+        return
       }
-      
-      if (!user) {
-        console.error('ユーザーが認証されていません');
-        setErrorMsg('ログインが必要です');
-        return;
-      }
-      
-      // まず、自分がオーナーのプロジェクトを取得
-      const { data: ownerProjects, error: ownerError } = await supabase
-        .from('projects')
-        .select('*, hypotheses(count), is_favorite')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      
-      if (ownerError) {
-        console.error('オーナープロジェクト取得エラー:', ownerError);
-        setErrorMsg('プロジェクトの読み込みに失敗しました');
-        return;
-      }
-      
-      // 次に、メンバーのプロジェクトIDを取得
-      const { data: memberData, error: memberError } = await supabase
-        .from('project_members')
-        .select('project_id')
-        .eq('user_id', user.id);
-      
-      if (memberError) {
-        console.error('メンバープロジェクトID取得エラー:', memberError);
-        // エラーがあっても続行（オーナープロジェクトだけでも表示）
-      }
-      
-      // メンバーのプロジェクトIDを取得（エラーがあれば空配列）
-      const memberProjectIds = memberData?.map(item => item.project_id) || [];
-      
-      // メンバーのプロジェクトIDがあれば、それらのプロジェクトも取得
-      let memberProjects = [];
-      if (memberProjectIds.length > 0) {
-        const { data: memberProjectsData, error: memberProjectsError } = await supabase
-          .from('projects')
-          .select('*, hypotheses(count), is_favorite')
-          .in('id', memberProjectIds)
-          .order('created_at', { ascending: false });
+  
+      // 1. プロジェクト取得（オーナー or メンバー）
+      const { data: projectsData, error: projectsError } = await supabase
+  .from('projects')
+  .select('id, name, user_id, status, created_at, is_favorite')
+  .order('created_at', { ascending: false });
+
+      console.log('projectsData:', projectsData);
+      console.log('projectsError:', projectsError);
         
-        if (memberProjectsError) {
-          console.error('メンバープロジェクト取得エラー:', memberProjectsError);
-          // エラーがあっても続行（オーナープロジェクトだけでも表示）
-        } else {
-          memberProjects = memberProjectsData || [];
-        }
+      if (!projectsData || !Array.isArray(projectsData)) {
+        console.error('projectsData is null or not an array')
+        setErrorMsg('プロジェクトデータが取得できませんでした')
+        return
       }
-      
-      // オーナープロジェクトとメンバープロジェクトを結合
-      const allProjects = [...(ownerProjects || []), ...memberProjects];
-      
-      // 重複を除去（同じプロジェクトがオーナーとメンバーの両方に含まれる可能性がある）
-      const uniqueProjects = Array.from(
-        new Map(allProjects.map(project => [project.id, project])).values()
-      );
-      
-      // データの整形
-      const enrichedProjects = uniqueProjects.map(p => ({
+  
+      // 2. 各プロジェクトごとの仮説件数を集計
+      const hypothesisCounts = await Promise.all(
+        projectsData.map(async (p) => {
+          const { count, error: countError } = await supabase
+            .from('hypotheses')
+            .select('*', { count: 'exact', head: true })
+            .eq('project_id', p.id);
+
+          return {
+            projectId: p.id,
+            count: typeof count === 'number' ? count : 0
+          }
+  
+          if (countError) {
+            console.warn(`project_id: ${p.id} のカウント取得失敗`, countError)
+          }
+  
+          return {
+            projectId: p.id,
+            count: count ?? 0,
+          }
+        })
+      )
+  
+      // 3. hypothesis_count を合成
+      const enrichedProjects = projectsData.map((p) => ({
         ...p,
-        hypothesis_count: p.hypotheses[0]?.count ?? 0,
-        is_favorite: p.is_favorite || false
-      }));
-      
-      setProjects(enrichedProjects);
+        hypothesis_count: hypothesisCounts.find((h) => h.projectId === p.id)?.count || 0,
+        is_favorite: p.is_favorite || false, // お気に入りフラグも補完
+      }))
+  
+      setProjects(enrichedProjects)
     } catch (err) {
-      console.error('プロジェクト取得中のエラー:', err);
-      setErrorMsg('予期せぬエラーが発生しました');
+      console.error('プロジェクト取得中のエラー:', err)
+      setErrorMsg('予期せぬエラーが発生しました')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleDelete = async (id: string) => {
     const confirm = window.confirm('このプロジェクトを削除します。元に戻すことはできません。本当によろしいですか？')
