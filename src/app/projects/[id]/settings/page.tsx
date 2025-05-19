@@ -110,29 +110,33 @@ export default function ProjectSettings() {
         setEditedDescription(projectData.description || '')
         setEditedStatus(projectData.status || '')
         
+        console.log('Project data:', projectData)
+        
         // プロジェクトメンバーを取得
         const { data: membersData, error: membersError } = await supabase
-        .from('project_members')
-        .select(`
-          id,
-          user_id,
-          role,
-          permissions,
-          joined_at,
-          user_profiles:fk_project_members_user_id (
+          .from('project_members')
+          .select(`
             id,
-            display_name,
-            email,
-            position,
-            department
-          )
-        `)
-        .eq('project_id', projectId)
-        .order('joined_at', { ascending: false })
-
+            user_id,
+            role,
+            permissions,
+            joined_at,
+            user_profiles:user_id (
+              id,
+              display_name,
+              email,
+              position,
+              department
+            )
+          `)
+          .eq('project_id', projectId)
+          .order('joined_at', { ascending: false })
+        
         if (membersError) throw membersError
-
-        // 型変換処理を追加 - user_profilesを配列から単一オブジェクトに変換
+        
+        console.log('Raw members data:', membersData)
+        
+        // 型変換処理を修正 - user_profilesが配列でなく単一オブジェクトになるように
         const typedMembers: Member[] = membersData.map(member => ({
           id: member.id,
           user_id: member.user_id,
@@ -147,10 +151,17 @@ export default function ProjectSettings() {
                 position: null,
                 department: null
               }
-            : member.user_profiles // オブジェクトで来た場合も対応
+            : member.user_profiles || {
+                id: member.user_id,
+                display_name: null,
+                email: '',
+                position: null,
+                department: null
+              }
         }))
-
-setMembers(typedMembers)
+        
+        console.log('Typed members:', typedMembers)
+        setMembers(typedMembers)
         
         // 組織のユーザーを取得
         if (projectData.organization_id) {
@@ -161,10 +172,15 @@ setMembers(typedMembers)
           
           if (orgUsersError) throw orgUsersError
           
-          // すでにメンバーになっているユーザーを除外
-          const memberIds = membersData.map(m => m.user_id)
-          const availableUsers = orgUsersData.filter(user => !memberIds.includes(user.id))
+          console.log('Organization users:', orgUsersData)
           
+          // すでにメンバーになっているユーザーを除外 (文字列に変換して比較)
+          const memberIds = typedMembers.map(m => m.user_id.toString())
+          const availableUsers = orgUsersData.filter(
+            user => !memberIds.includes(user.id.toString())
+          )
+          
+          console.log('Available users:', availableUsers)
           setOrganizationUsers(availableUsers)
         }
       } catch (err: any) {
@@ -218,19 +234,27 @@ setMembers(typedMembers)
   }
   
  // メンバー追加
-const addMember = async () => {
-    if (!selectedUserId) {
-      setError('ユーザーを選択してください')
-      return
+ const addMember = async () => {
+  if (!selectedUserId) {
+    setError('ユーザーを選択してください')
+    return
+  }
+  
+  try {
+    setIsAddingMember(true)
+    setError(null)
+    
+    const permissions = getRolePermissions(selectedRole)
+    
+    // 選択したユーザーの情報を保存
+    const selectedUser = organizationUsers.find(user => user.id === selectedUserId)
+    if (!selectedUser) {
+      throw new Error('選択したユーザーの情報が見つかりません')
     }
     
-    try {
-      setIsAddingMember(true)
-      setError(null)
-      
-      const permissions = getRolePermissions(selectedRole)
-      
-      const { data, error } = await supabase
+    console.log('Adding member:', selectedUser)
+    
+    const { data, error } = await supabase
       .from('project_members')
       .insert({
         project_id: projectId,
@@ -244,57 +268,51 @@ const addMember = async () => {
         user_id,
         role,
         permissions,
-        joined_at,
-        user_profiles:fk_project_members_user_id (
-          id,
-          display_name,
-          email,
-          position,
-          department
-        )
+        joined_at
       `)
       .single()
-      
-      if (error) throw error
-      
-      // データ型変換
-      const newMember: Member = {
-        id: data.id,
-        user_id: data.user_id,
-        role: data.role,
-        permissions: data.permissions,
-        joined_at: data.joined_at,
-        user_profiles: Array.isArray(data.user_profiles)
-          ? data.user_profiles[0] || {
-              id: data.user_id,
-              display_name: null,
-              email: '',
-              position: null,
-              department: null
-            }
-          : data.user_profiles
+    
+    if (error) throw error
+    
+    console.log('Added member data from DB:', data)
+    
+    // データ型変換 - user_profilesを追加
+    const newMember: Member = {
+      id: data.id,
+      user_id: data.user_id,
+      role: data.role,
+      permissions: data.permissions,
+      joined_at: data.joined_at,
+      user_profiles: {
+        id: selectedUser.id,
+        display_name: selectedUser.display_name,
+        email: selectedUser.email,
+        position: selectedUser.position || null,
+        department: selectedUser.department || null
       }
-      // メンバー一覧を更新
-      setMembers([newMember, ...members])
-      
-      // 追加したユーザーを組織ユーザー一覧から削除
-      setOrganizationUsers(organizationUsers.filter(user => user.id !== selectedUserId))
-      
-      // フォームをリセット
-      setSelectedUserId(null)
-      setSelectedRole('member')
-      setShowMemberForm(false)
-      setSuccess('メンバーを追加しました')
-      
-      // 3秒後に成功メッセージをクリア
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err: any) {
-      console.error('メンバー追加エラー:', err)
-      setError('メンバーの追加に失敗しました: ' + (err.message || err))
-    } finally {
-      setIsAddingMember(false)
     }
+    
+    // メンバー一覧を更新
+    setMembers(prevMembers => [newMember, ...prevMembers])
+    
+    // 追加したユーザーを組織ユーザー一覧から削除
+    setOrganizationUsers(prevUsers => prevUsers.filter(user => user.id !== selectedUserId))
+    
+    // フォームをリセット
+    setSelectedUserId(null)
+    setSelectedRole('member')
+    setShowMemberForm(false)
+    setSuccess('メンバーを追加しました')
+    
+    // 3秒後に成功メッセージをクリア
+    setTimeout(() => setSuccess(null), 3000)
+  } catch (err: any) {
+    console.error('メンバー追加エラー:', err)
+    setError('メンバーの追加に失敗しました: ' + (err.message || err))
+  } finally {
+    setIsAddingMember(false)
   }
+}
   
   // メンバー削除
   const removeMember = async (memberId: string, userId: string) => {
@@ -314,6 +332,14 @@ const addMember = async () => {
     try {
       setError(null)
       
+      // 削除対象メンバーの情報を事前に取得
+      const memberToRemove = members.find(m => m.id === memberId)
+      if (!memberToRemove) {
+        throw new Error('指定されたメンバーが見つかりません')
+      }
+      
+      console.log('Removing member:', memberToRemove)
+      
       const { error } = await supabase
         .from('project_members')
         .delete()
@@ -321,15 +347,21 @@ const addMember = async () => {
       
       if (error) throw error
       
-      // 削除したメンバーの情報
-      const removedMember = members.find(m => m.id === memberId)
-      
       // メンバー一覧から削除
-      setMembers(members.filter(m => m.id !== memberId))
+      setMembers(prevMembers => prevMembers.filter(m => m.id !== memberId))
       
-      // 削除したユーザーを組織ユーザー一覧に戻す
-      if (removedMember?.user_profiles) {
-        setOrganizationUsers([...organizationUsers, removedMember.user_profiles])
+      // 削除したユーザーの情報を整形して組織ユーザー一覧に戻す
+      if (memberToRemove.user_profiles) {
+        const userToAdd = {
+          id: memberToRemove.user_id,
+          display_name: memberToRemove.user_profiles.display_name,
+          email: memberToRemove.user_profiles.email,
+          position: memberToRemove.user_profiles.position,
+          department: memberToRemove.user_profiles.department
+        }
+        
+        console.log('Adding back to organization users:', userToAdd)
+        setOrganizationUsers(prevUsers => [...prevUsers, userToAdd])
       }
       
       setSuccess('メンバーを削除しました')
