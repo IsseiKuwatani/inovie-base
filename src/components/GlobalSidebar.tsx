@@ -155,7 +155,7 @@ useEffect(() => {
   }
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
+    <aside className="fixed top-0 left-0 w-64 h-screen bg-white border-r border-gray-200 flex flex-col z-50">
       {/* ヘッダーロゴと検索 */}
       <div className="px-5 py-4 border-b border-gray-100">
         <div className="flex items-center justify-between mb-4">
@@ -212,14 +212,6 @@ useEffect(() => {
                 </div>
               )}
               
-              {/* 部署・役職情報 */}
-              {(userProfile?.department || userProfile?.position) && (
-                <div className="mt-1 text-xs text-gray-500 truncate">
-                  {userProfile.department && <span>{userProfile.department}</span>}
-                  {userProfile.department && userProfile.position && <span> • </span>}
-                  {userProfile.position && <span>{userProfile.position}</span>}
-                </div>
-              )}
             </div>
           </div>
           

@@ -180,7 +180,8 @@ export default function ProjectSidebar() {
 
   if (isLoading || !project) {
     return (
-      <aside className="w-64 bg-gray-900 text-white flex flex-col px-6 py-8">
+      <aside className="fixed top-0 left-0 w-64 h-screen bg-gray-900 text-white flex flex-col px-6 py-8 z-40">
+
         <div className="animate-pulse">
           <div className="h-8 bg-gray-700 rounded mb-8"></div>
           <div className="h-4 bg-gray-700 rounded mb-4 w-3/4"></div>
@@ -194,7 +195,7 @@ export default function ProjectSidebar() {
   const breadcrumbs = getBreadcrumbs();
 
   return (
-    <aside className="w-64 bg-gray-900 text-white flex flex-col px-6 py-8">
+    <aside className="fixed top-0 left-0 w-64 h-screen z-40 bg-gray-900 text-white flex flex-col px-6 py-8">
       {/* Project Header - リンク修正 */}
       <div className="mb-8">
         <Link 

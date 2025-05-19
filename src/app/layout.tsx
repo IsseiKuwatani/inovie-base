@@ -71,15 +71,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="flex min-h-screen bg-gray-50 text-gray-900">
         {/* サイドバー - 条件によって切り替え */}
         {isProjectDetailPage ? (
-          <ProjectSidebar projectId={pathname?.split('/')[2]} />
+          <ProjectSidebar />
         ) : (
           <GlobalSidebar />
         )}
 
         {/* Main Content */}
-        <main className="flex-1 p-6 md:p-10 space-y-6">
+        <main className="flex-1 ml-64 p-6 md:p-10 space-y-6">
           {children}
         </main>
+
       </body>
     </html>
   )
