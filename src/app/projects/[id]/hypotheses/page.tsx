@@ -221,7 +221,8 @@ const deleteSelectedHypotheses = async () => {
       .insert({
         from_id: fromHypothesis,
         to_id: toHypothesis,
-        label: linkLabel || null
+        label: linkLabel || null,
+        project_id: projectId //
       })
     
     if (!error) {

@@ -83,23 +83,27 @@ export default function HypothesisTreeMap() {
       setIsLoading(true)
       
       // 仮説データを取得
-      const { data: hypothesesData } = await supabase
+      const { data: hypothesesData, error: hypothesisError } = await supabase
         .from('hypotheses')
         .select('*')
         .eq('project_id', projectId)
-      
+
+      console.log('hypothesesData:', hypothesesData)
+      console.log('hypothesisError:', hypothesisError)
+        
       if (hypothesesData && hypothesesData.length > 0) {
         setHypotheses(hypothesesData)
         
         // 仮説リンクデータを取得
-        const { data: linksData } = await supabase
+        const idList = hypothesesData.map(h => `"${h.id}"`).join(',');
+
+        const { data: linksData, error: linksError } = await supabase
           .from('hypothesis_links')
           .select('*')
-          .or(
-            `from_id.in.(${hypothesesData.map(h => `"${h.id}"`).join(',')}),` +
-            `to_id.in.(${hypothesesData.map(h => `"${h.id}"`).join(',')})`
-          )
-        
+          .or(`from_id.in.(${idList}),to_id.in.(${idList})`);
+
+        console.log('linksData:', linksData)
+        console.log('linksError:', linksError)
         setLinks(linksData || [])
       } else {
         setHypotheses([])
@@ -151,7 +155,8 @@ export default function HypothesisTreeMap() {
       const roots = Object.values(nodesMap)
         .filter(node => node.parents.length === 0)
         .map(node => node.id)
-      
+        console.log('treeData:', nodesMap)
+        console.log('rootNodes:', roots)
       setTreeData(nodesMap)
       setRootNodes(roots)
     }
