@@ -1,64 +1,49 @@
 'use client'
 
-import { useEffect, useState, useRef,} from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import {
-  Loader2,
-  MoreVertical,
-  FileText,
-  CalendarDays,
-  Star,
-  Filter,
-  X,
-  AlertCircle,
-  Plus,
-  Clock,
-  CheckCircle2,
-  CircleDashed,
-  ArrowUpRight,
-  Search,
-  SlidersHorizontal,
-  Lightbulb,
-  Map as MapIcon,
-  Trash,
-  LayoutGrid,
-  List
-} from 'lucide-react'
 import Link from 'next/link'
+import {
+  Loader2, Plus, X, AlertCircle, Filter, Search,
+  SlidersHorizontal, LayoutGrid, List, ChevronDown, ChevronUp
+} from 'lucide-react'
+import { ProjectSection } from '@/components/projects/ProjectSection'
+import { ProjectTabs } from '@/components/projects/ProjectTabs'
+import { ProjectStatusFilter } from '@/components/projects/ProjectStatusFilter'
 
-type Project = {
-  id: string
-  name: string
-  status: string | null
-  description?: string | null
-  created_at: string
-  hypothesis_count?: number
-  is_favorite: boolean
-}
+import { Project, ProjectCategory, MenuRefType } from '@/types/projects'
 
-const STATUS_TABS = ['すべて', '未着手', '進行中', '完了']
-const STATUS_ICONS: Record<string, React.ReactNode> = {
-  '未着手': <CircleDashed size={16} className="text-slate-500" />,
-  '進行中': <Clock size={16} className="text-amber-500" />,
-  '完了': <CheckCircle2 size={16} className="text-emerald-500" />,
-}
+export const STATUS_TABS = ['すべて', '未着手', '進行中', '完了']
 
 export default function ProjectList() {
-  const router = useRouter() // useRouterを追加
-  const [projects, setProjects] = useState<Project[]>([])
+  const router = useRouter()
+  
+  // プロジェクト状態（3カテゴリ）
+  const [ownedProjects, setOwnedProjects] = useState<Project[]>([])
+  const [joinedProjects, setJoinedProjects] = useState<Project[]>([])
+  const [orgProjects, setOrgProjects] = useState<Project[]>([])
+  
+  // UI状態
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState('すべて')
-  const [showFilters, setShowFilters] = useState(false)
-  const [user, setUser] = useState<any>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [viewMode, setViewMode] = useState<'card' | 'list'>('card') // 表示モードの状態を追加
-  const menuRef = useRef<HTMLDivElement>(null)
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
+  const [selectedTab, setSelectedTab] = useState<ProjectCategory>('all')
+  const [collapsedSections, setCollapsedSections] = useState<{[key: string]: boolean}>({
+    owned: false,
+    member: false,
+    organization: false
+  })
+  
+  const [user, setUser] = useState<any>(null)
+  const menuRef = useRef<HTMLDivElement>(null) as React.RefObject<HTMLDivElement>;
 
-  // 表示モードをローカルストレージから読み込む
+
+  // ローカルストレージから表示モードを読み込む
   useEffect(() => {
     const savedViewMode = localStorage.getItem('projectViewMode') as 'card' | 'list'
     if (savedViewMode) {
@@ -66,7 +51,7 @@ export default function ProjectList() {
     }
   }, [])
 
-  // 表示モードが変更されたらローカルストレージに保存
+  // 表示モード変更時にローカルストレージに保存
   useEffect(() => {
     localStorage.setItem('projectViewMode', viewMode)
   }, [viewMode])
@@ -101,7 +86,7 @@ export default function ProjectList() {
         
         if (userData.user) {
           setUser(userData.user)
-          fetchProjects() // 引数なしで呼び出し
+          fetchProjects()
         }
       } catch (err) {
         console.error('データ取得エラー:', err)
@@ -126,54 +111,116 @@ export default function ProjectList() {
         setErrorMsg('ユーザー情報の取得に失敗しました')
         return
       }
-  
-      // 1. プロジェクト取得（オーナー or メンバー）
-      const { data: projectsData, error: projectsError } = await supabase
-  .from('projects')
-  .select('id, name, user_id, status, created_at, is_favorite')
-  .order('created_at', { ascending: false });
 
-      console.log('projectsData:', projectsData);
-      console.log('projectsError:', projectsError);
-        
-      if (!projectsData || !Array.isArray(projectsData)) {
-        console.error('projectsData is null or not an array')
-        setErrorMsg('プロジェクトデータが取得できませんでした')
-        return
+      const userId = user.id
+
+      // a. 自分が作成したプロジェクト
+      const { data: ownedProjectsData, error: ownedError } = await supabase
+        .from('projects')
+        .select('id, name, user_id, status, description, created_at, is_favorite, organization_id')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+      
+      if (ownedError) {
+        console.error('所有プロジェクト取得エラー:', ownedError)
       }
-  
-      // 2. 各プロジェクトごとの仮説件数を集計
-      const hypothesisCounts = await Promise.all(
-        projectsData.map(async (p) => {
-          const { count, error: countError } = await supabase
-            .from('hypotheses')
-            .select('*', { count: 'exact', head: true })
-            .eq('project_id', p.id);
 
-          return {
-            projectId: p.id,
-            count: typeof count === 'number' ? count : 0
-          }
-  
-          if (countError) {
-            console.warn(`project_id: ${p.id} のカウント取得失敗`, countError)
-          }
-  
-          return {
-            projectId: p.id,
-            count: count ?? 0,
-          }
-        })
-      )
-  
-      // 3. hypothesis_count を合成
-      const enrichedProjects = projectsData.map((p) => ({
-        ...p,
-        hypothesis_count: hypothesisCounts.find((h) => h.projectId === p.id)?.count || 0,
-        is_favorite: p.is_favorite || false, // お気に入りフラグも補完
-      }))
-  
-      setProjects(enrichedProjects)
+      // b. 自分がメンバー参加しているプロジェクト（オーナー除く）- 2段階取得方式
+      const { data: membershipData, error: membershipError } = await supabase
+        .from('project_members')
+        .select('project_id')
+        .eq('user_id', userId)
+
+      if (membershipError) {
+        console.error('メンバーシップ取得エラー:', membershipError)
+      }
+
+      // プロジェクトIDのリストを抽出
+      const memberProjectIds = membershipData?.map(item => item.project_id) || []
+
+      // 関連するプロジェクト情報を取得（自分が作成したものを除外）
+      let formattedMemberProjects: Project[] = [];
+      if (memberProjectIds.length > 0) {
+        const { data: joinedProjectsData, error: joinedProjectsError } = await supabase
+          .from('projects')
+          .select('id, name, user_id, status, description, created_at, is_favorite, organization_id')
+          .in('id', memberProjectIds)
+          .neq('user_id', userId) // 自分が作成したプロジェクトを除外
+
+        if (joinedProjectsError) {
+          console.error('参加プロジェクト取得エラー:', joinedProjectsError)
+        }
+          
+        formattedMemberProjects = joinedProjectsData || [];
+      }
+
+      // c. 自分の所属組織の他プロジェクト（未参加）
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('organization_id')
+        .eq('id', userId)
+        .single()
+
+      if (profileError) {
+        console.error('ユーザープロファイル取得エラー:', profileError)
+      }
+
+      let organizationProjects: Project[] = []
+      
+      if (profile?.organization_id) {
+        const { data: orgProjectsData, error: orgError } = await supabase
+          .from('projects')
+          .select('id, name, user_id, status, description, created_at, is_favorite, organization_id')
+          .eq('organization_id', profile.organization_id)
+          .order('created_at', { ascending: false })
+
+        if (orgError) {
+          console.error('組織プロジェクト取得エラー:', orgError)
+        }
+
+        // 既に参加しているプロジェクトID（自分が作成 or メンバー参加）をセット
+        const ownedIds = new Set(ownedProjectsData?.map(p => p.id) || [])
+        const memberIds = new Set(formattedMemberProjects?.map(p => p.id) || [])
+        const participatedIds = new Set([...ownedIds, ...memberIds])
+
+        // 未参加のプロジェクトをフィルタリング
+        organizationProjects = orgProjectsData
+          ? orgProjectsData.filter(p => !participatedIds.has(p.id))
+          : []
+      }
+
+      // 各プロジェクト配列に仮説数を追加
+      const enrichProjectsWithHypothesis = async (projectsArr: Project[]) => {
+        return await Promise.all(
+          projectsArr.map(async (p) => {
+            const { count, error: countError } = await supabase
+              .from('hypotheses')
+              .select('*', { count: 'exact', head: true })
+              .eq('project_id', p.id)
+
+            if (countError) {
+              console.warn(`project_id: ${p.id} のカウント取得失敗`, countError)
+            }
+
+            return {
+              ...p,
+              hypothesis_count: typeof count === 'number' ? count : 0,
+              is_favorite: p.is_favorite || false
+            }
+          })
+        )
+      }
+
+      // 各カテゴリのプロジェクトに仮説数を追加
+      const enrichedOwned = await enrichProjectsWithHypothesis(ownedProjectsData || [])
+      const enrichedJoined = await enrichProjectsWithHypothesis(formattedMemberProjects || [])
+      const enrichedOrg = await enrichProjectsWithHypothesis(organizationProjects || [])
+
+      // 状態をセット
+      setOwnedProjects(enrichedOwned)
+      setJoinedProjects(enrichedJoined)
+      setOrgProjects(enrichedOrg)
+      
     } catch (err) {
       console.error('プロジェクト取得中のエラー:', err)
       setErrorMsg('予期せぬエラーが発生しました')
@@ -195,7 +242,10 @@ export default function ProjectList() {
         console.error('削除失敗:', error)
         alert('削除に失敗しました')
       } else {
-        setProjects((prev) => prev.filter((p) => p.id !== id))
+        // 各カテゴリから削除したプロジェクトを除外
+        setOwnedProjects(prev => prev.filter(p => p.id !== id))
+        setJoinedProjects(prev => prev.filter(p => p.id !== id))
+        setOrgProjects(prev => prev.filter(p => p.id !== id))
       }
     } catch (err) {
       console.error('削除処理中のエラー:', err)
@@ -209,14 +259,37 @@ export default function ProjectList() {
   const toggleFavorite = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation() // カードのクリックイベントが発火しないように
     
-    // 現在のお気に入り状態を取得
-    const currentProject = projects.find(p => p.id === id);
-    const newFavoriteState = !currentProject?.is_favorite;
+    // プロジェクトを見つける
+    const findProject = (id: string): [Project | undefined, 'owned' | 'joined' | 'org' | null] => {
+      const owned = ownedProjects.find(p => p.id === id)
+      if (owned) return [owned, 'owned']
+      
+      const joined = joinedProjects.find(p => p.id === id)
+      if (joined) return [joined, 'joined']
+      
+      const org = orgProjects.find(p => p.id === id)
+      if (org) return [org, 'org']
+      
+      return [undefined, null]
+    }
+    
+    const [project, category] = findProject(id)
+    if (!project || !category) return
+    
+    const newFavoriteState = !project.is_favorite
     
     // UI を先に更新して応答性を良くする
-    setProjects((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, is_favorite: newFavoriteState } : p))
-    )
+    switch (category) {
+      case 'owned':
+        setOwnedProjects(prev => prev.map(p => p.id === id ? {...p, is_favorite: newFavoriteState} : p))
+        break
+      case 'joined':
+        setJoinedProjects(prev => prev.map(p => p.id === id ? {...p, is_favorite: newFavoriteState} : p))
+        break
+      case 'org':
+        setOrgProjects(prev => prev.map(p => p.id === id ? {...p, is_favorite: newFavoriteState} : p))
+        break
+    }
     
     try {
       // データベースを更新
@@ -226,20 +299,36 @@ export default function ProjectList() {
         .eq('id', id)
       
       if (error) {
-        console.error('お気に入り更新エラー:', error);
-        // エラーが発生した場合は元の状態に戻す
-        setProjects((prev) =>
-          prev.map((p) => (p.id === id ? { ...p, is_favorite: !newFavoriteState } : p))
-        );
-        alert('お気に入りの更新に失敗しました');
+        console.error('お気に入り更新エラー:', error)
+        // エラー時は元に戻す
+        switch (category) {
+          case 'owned':
+            setOwnedProjects(prev => prev.map(p => p.id === id ? {...p, is_favorite: !newFavoriteState} : p))
+            break
+          case 'joined':
+            setJoinedProjects(prev => prev.map(p => p.id === id ? {...p, is_favorite: !newFavoriteState} : p))
+            break
+          case 'org':
+            setOrgProjects(prev => prev.map(p => p.id === id ? {...p, is_favorite: !newFavoriteState} : p))
+            break
+        }
+        alert('お気に入りの更新に失敗しました')
       }
     } catch (err) {
-      console.error('お気に入り処理中のエラー:', err);
-      // エラーが発生した場合は元の状態に戻す
-      setProjects((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, is_favorite: !newFavoriteState } : p))
-      );
-      alert('お気に入りの更新中にエラーが発生しました');
+      console.error('お気に入り処理中のエラー:', err)
+      // エラー時は元に戻す
+      switch (category) {
+        case 'owned':
+          setOwnedProjects(prev => prev.map(p => p.id === id ? {...p, is_favorite: !newFavoriteState} : p))
+          break
+        case 'joined':
+          setJoinedProjects(prev => prev.map(p => p.id === id ? {...p, is_favorite: !newFavoriteState} : p))
+          break
+        case 'org':
+          setOrgProjects(prev => prev.map(p => p.id === id ? {...p, is_favorite: !newFavoriteState} : p))
+          break
+      }
+      alert('お気に入りの更新中にエラーが発生しました')
     }
   }
 
@@ -248,35 +337,90 @@ export default function ProjectList() {
     setViewMode(viewMode === 'card' ? 'list' : 'card')
   }
 
+  // セクションの折りたたみ切り替え
+  const toggleSection = (section: string) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }))
+  }
+
   // 特定のカードへの移動
   const handleCardClick = (id: string) => {
     router.push(`/projects/${id}`)
   }
+  
+  // フィルター適用用関数
+  const applyFilters = (projects: Project[]) => {
+    return projects
+      .filter(p => statusFilter === 'すべて' ? true : p.status === statusFilter)
+      .filter(p => {
+        if (!searchTerm) return true
+        const searchLower = searchTerm.toLowerCase()
+        return (
+          p.name.toLowerCase().includes(searchLower) || 
+          (p.description && p.description.toLowerCase().includes(searchLower))
+        )
+      })
+  }
 
-  // フィルター+検索適用
-  const filteredProjects = projects
-    .filter(p => statusFilter === 'すべて' ? true : p.status === statusFilter)
-    .filter(p => {
-      if (!searchTerm) return true
-      const searchLower = searchTerm.toLowerCase()
-      return (
-        p.name.toLowerCase().includes(searchLower) || 
-        (p.description && p.description.toLowerCase().includes(searchLower))
-      )
-    })
-
-  // ソート: お気に入り→その他
-  const sortedProjects = [
-    ...filteredProjects.filter((p) => p.is_favorite),
-    ...filteredProjects.filter((p) => !p.is_favorite)
-  ]
-
+  // フィルター適用
+  const filteredOwnedProjects = applyFilters(ownedProjects)
+  const filteredJoinedProjects = applyFilters(joinedProjects)
+  const filteredOrgProjects = applyFilters(orgProjects)
+  
   // フィルター状態をリセット
   const resetFilters = () => {
     setStatusFilter('すべて')
     setSearchTerm('')
   }
 
+  // タブ変更ハンドラ
+  const handleTabChange = (tab: ProjectCategory) => {
+    setSelectedTab(tab)
+  }
+  
+  // 表示するプロジェクト一覧を決定
+  const getVisibleSections = () => {
+    if (selectedTab === 'all') {
+      return {
+        showOwned: true,
+        showJoined: true,
+        showOrg: true
+      }
+    } else if (selectedTab === 'owned') {
+      return {
+        showOwned: true,
+        showJoined: false,
+        showOrg: false
+      }
+    } else if (selectedTab === 'member') {
+      return {
+        showOwned: false,
+        showJoined: true,
+        showOrg: false
+      }
+    } else if (selectedTab === 'organization') {
+      return {
+        showOwned: false,
+        showJoined: false,
+        showOrg: true
+      }
+    }
+    
+    return {
+      showOwned: true,
+      showJoined: true,
+      showOrg: true
+    }
+  }
+  
+  const visibleSections = getVisibleSections()
+  
+  // 全プロジェクト数を計算
+  const totalProjects = ownedProjects.length + joinedProjects.length + orgProjects.length
+  const totalFilteredProjects = filteredOwnedProjects.length + filteredJoinedProjects.length + filteredOrgProjects.length
+  
   // エラー状態
   if (errorMsg && !user) {
     return (
@@ -299,90 +443,6 @@ export default function ProjectList() {
       </div>
     )
   }
-
-// レンダリングするプロジェクトメニュー (共通部分)
-const renderProjectMenu = (p: Project, mode: 'card' | 'list' = 'card') => (
-  <div className="relative">
-    <button 
-      onClick={(e) => {
-        e.stopPropagation(); // 親要素へのクリックイベント伝播を防ぐ
-        setOpenMenuId(openMenuId === p.id ? null : p.id);
-      }}
-      className="p-1.5 rounded-full hover:bg-slate-200 transition-colors text-slate-500"
-      aria-label="メニューを開く"
-    >
-      <MoreVertical size={18} />
-    </button>
-    
-    {openMenuId === p.id && (
-      <div 
-        ref={menuRef}
-        className={`absolute z-20 w-48 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden
-          ${mode === 'card' 
-            ? 'bottom-full right-0 mb-1' // カード表示時は上に表示
-            : 'top-0 right-0 mt-8'       // リスト表示時は下に表示
-          }`}
-        onClick={(e) => e.stopPropagation()} // メニュー内クリックの伝播を防ぐ
-      >
-        <ul className="text-sm divide-y divide-slate-100">
-          <li>
-            <Link 
-              href={`/projects/${p.id}`} 
-              className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700"
-              onClick={(e) => e.stopPropagation()} // リンククリックの伝播を防ぐ
-            >
-              <FileText size={16} />
-              <span>詳細確認</span>
-            </Link>
-          </li>
-          <li>
-            <Link 
-              href={`/projects/${p.id}/hypotheses`} 
-              className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700"
-              onClick={(e) => e.stopPropagation()} // リンククリックの伝播を防ぐ
-            >
-              <Lightbulb size={16} />
-              <span>仮説一覧</span>
-            </Link>
-          </li>
-          <li>
-            <Link 
-              href={`/projects/${p.id}/hypotheses/new`} 
-              className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700"
-              onClick={(e) => e.stopPropagation()} // リンククリックの伝播を防ぐ
-            >
-              <Plus size={16} />
-              <span>仮説作成</span>
-            </Link>
-          </li>
-          <li>
-            <Link 
-              href={`/projects/${p.id}/hypotheses/map`} 
-              className="flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-slate-700"
-              onClick={(e) => e.stopPropagation()} // リンククリックの伝播を防ぐ
-            >
-              <MapIcon size={16} />
-              <span>マップ表示</span>
-            </Link>
-          </li>
-          <li>
-            <button 
-              onClick={(e) => {
-                e.stopPropagation(); // 削除ボタンのクリックが伝播しないようにする
-                handleDelete(p.id);
-              }} 
-              disabled={deletingId === p.id} 
-              className="flex items-center gap-2 w-full text-left px-4 py-2.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Trash size={16} />
-              <span>{deletingId === p.id ? '削除中...' : '削除'}</span>
-            </button>
-          </li>
-        </ul>
-      </div>
-    )}
-  </div>
-)
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -435,6 +495,17 @@ const renderProjectMenu = (p: Project, mode: 'card' | 'list' = 'card') => (
           </div>
         </div>
         
+        {/* カテゴリタブ */}
+        <div className="mt-6 border-b border-slate-200">
+          <ProjectTabs 
+            selectedTab={selectedTab}
+            onTabChange={handleTabChange}
+            ownedCount={ownedProjects.length}
+            joinedCount={joinedProjects.length}
+            orgCount={orgProjects.length}
+          />
+        </div>
+        
         {/* 検索とフィルター */}
         <div className="mt-6 flex flex-col sm:flex-row gap-4">
           <div className="relative flex-grow">
@@ -457,20 +528,10 @@ const renderProjectMenu = (p: Project, mode: 'card' | 'list' = 'card') => (
           </div>
           
           <div className="flex gap-2">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border transition-colors ${
-                showFilters 
-                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200' 
-                  : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-200 hover:text-indigo-700'
-              }`}
-            >
-              <SlidersHorizontal size={18} />
-              <span>フィルター</span>
-              {statusFilter !== 'すべて' && (
-                <span className="flex items-center justify-center w-5 h-5 bg-indigo-600 text-white text-xs rounded-full">1</span>
-              )}
-            </button>
+            <ProjectStatusFilter 
+              statusFilter={statusFilter}
+              setStatusFilter={setStatusFilter}
+            />
             
             {(statusFilter !== 'すべて' || searchTerm) && (
               <button
@@ -482,28 +543,6 @@ const renderProjectMenu = (p: Project, mode: 'card' | 'list' = 'card') => (
             )}
           </div>
         </div>
-        
-        {/* 展開されるフィルターオプション */}
-        {showFilters && (
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <h3 className="text-sm font-medium text-slate-700 mb-3">ステータス</h3>
-            <div className="flex flex-wrap gap-2">
-              {STATUS_TABS.map((status) => (
-                <button
-                  key={status}
-                  className={`text-sm px-4 py-2 rounded-lg border transition-all duration-200 ${
-                    statusFilter === status
-                      ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white border-transparent shadow-sm'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-200 hover:text-indigo-700'
-                  }`}
-                  onClick={() => setStatusFilter(status)}
-                >
-                  {status}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* エラーメッセージ（認証成功後のエラー） */}
@@ -519,15 +558,15 @@ const renderProjectMenu = (p: Project, mode: 'card' | 'list' = 'card') => (
       {/* 検索結果の表示 */}
       <div className="mb-6 flex justify-between items-center">
         <div className="text-sm text-slate-600 font-medium">
-          {filteredProjects.length} 件のプロジェクト
-          {filteredProjects.length !== projects.length && ` (全 ${projects.length} 件中)`}
+          {totalFilteredProjects} 件のプロジェクト
+          {totalFilteredProjects !== totalProjects && ` (全 ${totalProjects} 件中)`}
         </div>
         
         <div className="text-xs text-slate-500">
           {searchTerm && <span>検索: "{searchTerm}" </span>}
           {statusFilter !== 'すべて' && (
             <span className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 rounded-full">
-              {STATUS_ICONS[statusFilter] || <Filter size={12} />}
+              <Filter size={12} />
               {statusFilter}
             </span>
           )}
@@ -540,13 +579,13 @@ const renderProjectMenu = (p: Project, mode: 'card' | 'list' = 'card') => (
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600 mb-4"></div>
           <p className="text-slate-500">プロジェクトを読み込み中...</p>
         </div>
-      ) : sortedProjects.length === 0 ? (
+      ) : (totalProjects === 0) ? (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="text-center py-16">
             <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
-              <FileText className="text-slate-400" size={32} />
+              <Loader2 className="text-slate-400" size={32} />
             </div>
-            <h3 className="text-xl font-medium text-slate-700 mb-2">該当するプロジェクトはありません</h3>
+            <h3 className="text-xl font-medium text-slate-700 mb-2">プロジェクトがありません</h3>
             <p className="text-slate-500 max-w-md mx-auto mb-6">
               {searchTerm || statusFilter !== 'すべて' 
                 ? '検索条件やフィルターを変更してみてください' 
@@ -561,218 +600,157 @@ const renderProjectMenu = (p: Project, mode: 'card' | 'list' = 'card') => (
             </Link>
           </div>
         </div>
-      ) : viewMode === 'card' ? (
-        // カード型表示
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {sortedProjects.map((p) => (
-            <div
-              key={p.id}
-              className="group bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 hover:border-indigo-200 overflow-hidden flex flex-col"
+      ) : totalFilteredProjects === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="text-center py-16">
+            <h3 className="text-xl font-medium text-slate-700 mb-2">該当するプロジェクトはありません</h3>
+            <p className="text-slate-500 max-w-md mx-auto mb-6">
+              検索条件やフィルターを変更してみてください
+            </p>
+            <button
+              onClick={resetFilters}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
             >
-              {/* ヘッダー部分 */}
-              <div className="relative p-5 border-b border-slate-100">
-                {/* お気に入りバッジ - アイコンスタイル */}
-            {p.is_favorite && (
-              <div className="absolute top-2 right-2 z-10">
-                <div className="bg-amber-400 text-white p-1.5 rounded-full shadow-sm">
-                  <Star size={14} fill="currentColor" />
-                </div>
-              </div>
-            )}
-                            
-                
-                
-                {/* プロジェクト名 */}
-                <Link
-                  href={`/projects/${p.id}`}
-                  className="block mb-2 group-hover:translate-y-[-2px] transition-transform"
-                >
-                  <h2 className="text-lg font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors line-clamp-1">
-                    {p.name}
-                  </h2>
-                </Link>
-                
-                {/* 説明 */}
-                {p.description && (
-                  <p className="text-sm text-slate-600 mb-3 line-clamp-2">{p.description}</p>
-                )}
-                
-                {/* ステータスバッジ */}
-                <div className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium bg-slate-100 text-slate-700">
-                  {STATUS_ICONS[p.status || '未着手'] || <CircleDashed size={14} />}
-                  <span>{p.status || '未設定'}</span>
-                </div>
-              </div>
-
-              {/* コンテンツ部分 */}
-              <div className="p-5 flex-1 flex flex-col">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center text-sm text-slate-600 gap-1.5">
-                    <FileText size={16} className="text-indigo-500" />
-                    <span>仮説 {p.hypothesis_count} 件</span>
-                  </div>
-                  
-                  <button 
-                    onClick={(e) => toggleFavorite(p.id, e)} 
-                    className={`p-1.5 rounded-full ${p.is_favorite ? 'text-amber-400 bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-slate-50'} transition-colors`}
-                    aria-label={p.is_favorite ? "お気に入りから削除" : "お気に入りに追加"}
-                  >
-                    <Star fill={p.is_favorite ? 'currentColor' : 'none'} size={16} />
-                  </button>
-                </div>
-                
-                {/* 作成日 */}
-                <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-auto">
-                  <Clock size={14} />
-                  <span>作成日: {new Date(p.created_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                </div>
-              </div>
-
-              {/* フッター部分 */}
-              <div className="bg-slate-50 px-5 py-3 flex justify-between items-center border-t border-slate-100">
-                <Link
-                  href={`/projects/${p.id}`}
-                  className="text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 group-hover:gap-2 transition-all"
-                >
-                  詳細を見る
-                  <ArrowUpRight size={16} />
-                </Link>
-                
-                {renderProjectMenu(p, 'card')} {/* 'card'モードを明示的に指定 */}
-              </div>
-            </div>
-          ))}
+              フィルターをリセット
+            </button>
+          </div>
         </div>
       ) : (
-        // リスト型表示
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    <div className="flex items-center">
-                      <span>プロジェクト名</span>
-                    </div>
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    ステータス
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    仮説数
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    作成日
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {sortedProjects.map((p) => (
-                  <tr 
-                    key={p.id} 
-                    className="hover:bg-slate-50 transition-colors cursor-pointer"
-                    onClick={() => handleCardClick(p.id)}
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        {p.is_favorite && (
-                          <Star fill="currentColor" size={16} className="text-amber-400 flex-shrink-0" />
-                        )}
-                        <div className="flex flex-col">
-                          <div className="text-sm font-medium text-slate-900">{p.name}</div>
-                          {p.description && (
-                            <div className="text-xs text-slate-500 line-clamp-1 max-w-xs">{p.description}</div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium bg-slate-100 text-slate-700">
-                        {STATUS_ICONS[p.status || '未着手'] || <CircleDashed size={14} />}
-                        <span>{p.status || '未設定'}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                        <FileText size={16} className="text-indigo-500" />
-                        <span>{p.hypothesis_count}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                      {new Date(p.created_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' })}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium relative" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-2">
-                      <button 
-                        onClick={(e) => toggleFavorite(p.id, e)} 
-                        className={`p-1.5 rounded-full ${p.is_favorite ? 'text-amber-400 bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-slate-50'} transition-colors`}
-                        aria-label={p.is_favorite ? "お気に入りから削除" : "お気に入りに追加"}
-                      >
-                        <Star fill={p.is_favorite ? 'currentColor' : 'none'} size={16} />
-                      </button>
-                      <div className="relative">
-                        {renderProjectMenu(p, 'list')} {/* 'list'モードを明示的に指定 */}
-                      </div>
-                    </div>
-                  </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* モバイル対応のリスト表示 */}
-          <div className="md:hidden border-t border-slate-200">
-            <div className="text-xs text-slate-500 px-4 py-2 bg-slate-50">
-              リスト表示はモバイルデバイスでは一部簡略化されています
-            </div>
-            {sortedProjects.map((p) => (
+        <div className="space-y-8">
+          {/* 自分が作成したプロジェクト */}
+          {visibleSections.showOwned && (
+            <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden transition-all duration-300`}>
               <div 
-                key={p.id}
-                className="border-b border-slate-100 p-4 hover:bg-slate-50 transition-colors"
-                onClick={() => handleCardClick(p.id)}
+                className="flex items-center justify-between p-6 cursor-pointer"
+                onClick={() => toggleSection('owned')}
               >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    {p.is_favorite && (
-                      <Star fill="currentColor" size={16} className="text-amber-400 flex-shrink-0 mt-1" />
-                    )}
-                    <div>
-                      <h3 className="font-medium text-slate-900 mb-1">{p.name}</h3>
-                      <div className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-700">
-                        {STATUS_ICONS[p.status || '未着手'] || <CircleDashed size={12} />}
-                        <span>{p.status || '未設定'}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                                  <div 
-                  onClick={(e) => e.stopPropagation()}
-                  className="relative z-20" // z-indexを高く設定
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <span className="w-1.5 h-5 bg-indigo-500 rounded"></span>
+                  <span>あなたが作成したプロジェクト</span>
+                  {filteredOwnedProjects.length > 0 && (
+                    <span className="ml-2 text-sm bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                      {filteredOwnedProjects.length}
+                    </span>
+                  )}
+                </h2>
+                <button 
+                  className="p-2 rounded-full hover:bg-slate-100 transition-colors"
+                  aria-label={collapsedSections.owned ? 'セクションを展開' : 'セクションを折りたたむ'}
                 >
-                  {renderProjectMenu(p, 'list')} {/* 'list'モードを明示的に指定 */}
-                </div>
-                </div>
-                
-                {p.description && (
-                  <p className="text-xs text-slate-600 mb-3 line-clamp-1">{p.description}</p>
-                )}
-                
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <div className="flex items-center gap-1.5">
-                    <Clock size={12} />
-                    <span>{new Date(p.created_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-1.5">
-                    <FileText size={12} className="text-indigo-500" />
-                    <span>仮説 {p.hypothesis_count} 件</span>
-                  </div>
-                </div>
+                  {collapsedSections.owned ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+                </button>
               </div>
-            ))}
-          </div>
+              
+              {!collapsedSections.owned && (
+                <div className="px-6 pb-6">
+                  <ProjectSection 
+                    projects={ownedProjects} 
+                    viewMode={viewMode}
+                    toggleFavorite={toggleFavorite}
+                    handleCardClick={handleCardClick}
+                    handleDelete={handleDelete}
+                    statusFilter={statusFilter}
+                    searchTerm={searchTerm}
+                    deletingId={deletingId}
+                    openMenuId={openMenuId}
+                    setOpenMenuId={setOpenMenuId}
+                    menuRef={menuRef}
+                    canDelete={true} // 自分が作成したプロジェクトは削除可能
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          {/* 自分が参加しているプロジェクト */}
+          {visibleSections.showJoined && (
+            <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden transition-all duration-300`}>
+              <div 
+                className="flex items-center justify-between p-6 cursor-pointer"
+                onClick={() => toggleSection('member')}
+              >
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <span className="w-1.5 h-5 bg-violet-500 rounded"></span>
+                  <span>あなたが参加しているプロジェクト</span>
+                  {filteredJoinedProjects.length > 0 && (
+                    <span className="ml-2 text-sm bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
+                      {filteredJoinedProjects.length}
+                    </span>
+                  )}
+                </h2>
+                <button 
+                  className="p-2 rounded-full hover:bg-slate-100 transition-colors"
+                  aria-label={collapsedSections.member ? 'セクションを展開' : 'セクションを折りたたむ'}
+                >
+                  {collapsedSections.member ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+                </button>
+              </div>
+              
+              {!collapsedSections.member && (
+                <div className="px-6 pb-6">
+                  <ProjectSection 
+                    projects={joinedProjects} 
+                    viewMode={viewMode}
+                    toggleFavorite={toggleFavorite}
+                    handleCardClick={handleCardClick}
+                    handleDelete={handleDelete}
+                    statusFilter={statusFilter}
+                    searchTerm={searchTerm}
+                    deletingId={deletingId}
+                    openMenuId={openMenuId}
+                    setOpenMenuId={setOpenMenuId}
+                    menuRef={menuRef}
+                    canDelete={false} // 参加しているプロジェクトは削除不可
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 組織内の未参加プロジェクト */}
+          {visibleSections.showOrg && (
+            <div className={`bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden transition-all duration-300`}>
+              <div 
+                className="flex items-center justify-between p-6 cursor-pointer"
+                onClick={() => toggleSection('organization')}
+              >
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <span className="w-1.5 h-5 bg-emerald-500 rounded"></span>
+                  <span>同じ組織内の他のプロジェクト</span>
+                  {filteredOrgProjects.length > 0 && (
+                    <span className="ml-2 text-sm bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                      {filteredOrgProjects.length}
+                    </span>
+                  )}
+                </h2>
+                <button 
+                  className="p-2 rounded-full hover:bg-slate-100 transition-colors"
+                  aria-label={collapsedSections.organization ? 'セクションを展開' : 'セクションを折りたたむ'}
+                >
+                  {collapsedSections.organization ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+                </button>
+              </div>
+              
+              {!collapsedSections.organization && (
+                <div className="px-6 pb-6">
+                  <ProjectSection 
+                    projects={orgProjects} 
+                    viewMode={viewMode}
+                    toggleFavorite={toggleFavorite}
+                    handleCardClick={handleCardClick}
+                    handleDelete={handleDelete}
+                    statusFilter={statusFilter}
+                    searchTerm={searchTerm}
+                    deletingId={deletingId}
+                    openMenuId={openMenuId}
+                    setOpenMenuId={setOpenMenuId}
+                    menuRef={menuRef}
+                    canDelete={false} // 未参加プロジェクトは削除不可
+                    showJoinButton={true} // 参加ボタンを表示
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
       
