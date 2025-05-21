@@ -457,7 +457,7 @@ export default function DocumentsPage() {
           カテゴリ管理
         </Button>
       </Link>
-      <Link href="/documents/new">
+      <Link href="/documents/create">
         <Button className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700">
           <Plus className="w-4 h-4 mr-2" />
           リンク登録
@@ -688,7 +688,7 @@ export default function DocumentsPage() {
                    <LinkIcon className="w-12 h-12 mx-auto text-slate-400 mb-3" />
                     <h3 className="text-lg font-medium text-slate-700 mb-1">ドキュメントがありません</h3>
                     <p className="text-slate-500">まだドキュメント/リンクが登録されていません</p>
-                    <Link href="/documents/new">
+                    <Link href="/documents/create">
                       <button
                         className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg font-medium flex items-center mx-auto"
                       >
