@@ -713,9 +713,7 @@ export default function DocumentsPage() {
                             {doc.title}
                           </h3>
                           
-                          {doc.status === 'draft' && (
-                            <span className="ml-2 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded">下書き</span>
-                          )}
+                          
                         </div>
                         
                         {doc.summary && (

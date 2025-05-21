@@ -294,16 +294,19 @@ export default function CategoriesPage() {
       setIsSaving(true)
       setError(null)
       
-      const { error } = await supabase
+            const { data, error } = await supabase
         .from('document_categories')
         .update({
-          name: editName.trim(),
-          description: editDescription.trim() || null,
-          color: editColor,
-          updated_at: new Date().toISOString()
+            name: editName.trim(),
+            description: editDescription.trim() || null,
+            color: editColor,
+            is_archived: false,
+            updated_at: new Date().toISOString()
         })
         .eq('id', categoryId)
-      
+
+        console.log("結果", { data, error })
+            
       if (error) {
         throw new Error('カテゴリの更新に失敗しました: ' + error.message)
       }
