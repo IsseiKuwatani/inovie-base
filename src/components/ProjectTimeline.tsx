@@ -176,7 +176,6 @@ export default function ProjectTimeline({ projectId, fullPage = false }: { proje
         
         // 検証データ取得
         try {
-          console.log('Fetching validations')
           const { data: validations, error: validationsError } = await supabase
             .from('validations')
             .select('id, hypothesis_id, method, result, created_at')
