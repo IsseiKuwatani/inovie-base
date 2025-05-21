@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { 
   Clock, FileEdit, CheckCircle, XCircle, 
   PenLine, Lightbulb, ClipboardCheck, LayoutGrid,
-  AlertCircle, RefreshCcw
+  AlertCircle, RefreshCcw,User 
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ja } from 'date-fns/locale'
@@ -21,6 +21,41 @@ type TimelineEvent = {
   entityId?: string
   entityType?: string
   url?: string
+  userName?: string 
+  userId?: string   
+}
+
+// ユーザープロファイル型の定義
+type UserProfile = {
+  id: string
+  display_name: string | null
+  email: string | null
+}
+// ユーザープロファイル情報の取得
+const fetchUserProfiles = async (userIds: string[]) => {
+  if (!userIds.length) return {}
+  
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('id, display_name, email')
+      .in('id', userIds)
+    
+    if (error) {
+      console.error('Error fetching user profiles:', error)
+      return {}
+    }
+    
+    const profiles: Record<string, UserProfile> = {}
+    data?.forEach(profile => {
+      profiles[profile.id] = profile
+    })
+    
+    return profiles
+  } catch (err) {
+    console.error('Error in user profile fetch:', err)
+    return {}
+  }
 }
 
 export default function ProjectTimeline({ projectId, fullPage = false }: { projectId: string, fullPage?: boolean }) {
@@ -72,15 +107,13 @@ export default function ProjectTimeline({ projectId, fullPage = false }: { proje
     
     const allEvents: TimelineEvent[] = []
     let hypothesesList: any[] = []
+    const userIdsToFetch = new Set<string>() // ユーザーIDを収集するためのセット
     
-    // 1. まず仮説データを取得
+    // 1. プロジェクト情報とプロジェクト作成者の取得
     try {
-      console.log(`Fetching hypotheses for project: ${projectId}`)
-      
-      // プロジェクトが存在するか確認
       const { data: projectCheck, error: projectError } = await supabase
         .from('projects')
-        .select('id')
+        .select('id, user_id')
         .eq('id', projectId)
         .single()
       
@@ -91,7 +124,16 @@ export default function ProjectTimeline({ projectId, fullPage = false }: { proje
         return
       }
       
-      // 仮説データ取得
+      // プロジェクト作成者のIDを収集
+      if (projectCheck?.user_id) {
+        userIdsToFetch.add(projectCheck.user_id)
+      }
+    } catch (err) {
+      console.error('Error in project fetch:', err)
+    }
+    
+    // 2. 仮説データの取得と仮説作成者情報の収集
+    try {
       const { data: hypotheses, error: hypothesesError } = await supabase
         .from('hypotheses')
         .select('id, title, status, created_at')
@@ -100,39 +142,78 @@ export default function ProjectTimeline({ projectId, fullPage = false }: { proje
       
       if (hypothesesError) {
         console.error(`Hypothesis fetch error: ${hypothesesError.message}`, hypothesesError)
-        // エラーは記録するが処理は続行
       } else if (hypotheses && hypotheses.length > 0) {
         hypothesesList = hypotheses
         console.log(`Found ${hypotheses.length} hypotheses`)
         
-        // 仮説作成イベント
-        hypotheses.forEach(h => {
-          if (!h.id || !h.created_at) return // nullチェック
+        // 各仮説の最初のバージョンから作成者を取得
+        for (const h of hypotheses) {
+          if (!h.id) continue
           
-          allEvents.push({
-            id: `hypothesis_created_${h.id}`,
-            title: '仮説が作成されました',
-            description: h.title || '(タイトルなし)',
-            timestamp: h.created_at,
-            type: 'hypothesis_created',
-            icon: <Lightbulb size={16} />,
-            color: 'bg-indigo-600',
-            entityId: h.id,
-            entityType: 'hypothesis',
-            url: `/projects/${projectId}/hypotheses/${h.id}`
-          })
-        })
-      } else {
-        console.log('No hypotheses found for this project')
+          try {
+            const { data: versionData, error: versionError } = await supabase
+              .from('hypothesis_versions')
+              .select('updated_by')
+              .eq('hypothesis_id', h.id)
+              .order('version_number', { ascending: true })
+              .limit(1)
+            
+            if (!versionError && versionData && versionData.length > 0 && versionData[0].updated_by) {
+              userIdsToFetch.add(versionData[0].updated_by)
+              
+              // 仮説作成イベント
+              allEvents.push({
+                id: `hypothesis_created_${h.id}`,
+                title: '仮説が作成されました',
+                description: h.title || '(タイトルなし)',
+                timestamp: h.created_at,
+                type: 'hypothesis_created',
+                icon: <Lightbulb size={16} />,
+                color: 'bg-indigo-600',
+                entityId: h.id,
+                entityType: 'hypothesis',
+                url: `/projects/${projectId}/hypotheses/${h.id}`,
+                userId: versionData[0].updated_by
+              })
+            } else {
+              // ユーザー情報がなくても仮説イベントは追加
+              allEvents.push({
+                id: `hypothesis_created_${h.id}`,
+                title: '仮説が作成されました',
+                description: h.title || '(タイトルなし)',
+                timestamp: h.created_at,
+                type: 'hypothesis_created',
+                icon: <Lightbulb size={16} />,
+                color: 'bg-indigo-600',
+                entityId: h.id,
+                entityType: 'hypothesis',
+                url: `/projects/${projectId}/hypotheses/${h.id}`
+              })
+            }
+          } catch (err) {
+            console.error(`Error fetching hypothesis version for ${h.id}:`, err)
+            // エラー発生時も仮説イベントは追加
+            allEvents.push({
+              id: `hypothesis_created_${h.id}`,
+              title: '仮説が作成されました',
+              description: h.title || '(タイトルなし)',
+              timestamp: h.created_at,
+              type: 'hypothesis_created',
+              icon: <Lightbulb size={16} />,
+              color: 'bg-indigo-600',
+              entityId: h.id,
+              entityType: 'hypothesis',
+              url: `/projects/${projectId}/hypotheses/${h.id}`
+            })
+          }
+        }
       }
     } catch (err) {
       console.error('Error in hypotheses fetch:', err)
-      // エラーは記録するが処理は続行
     }
     
-    // 2. キャンバスデータを取得
+    // 3. キャンバスデータの取得
     try {
-      console.log('Fetching canvas data')
       const { data: canvas, error: canvasError } = await supabase
         .from('canvas')
         .select('id, updated_at')
@@ -146,6 +227,7 @@ export default function ProjectTimeline({ projectId, fullPage = false }: { proje
       } else if (canvas && canvas.id && canvas.updated_at) {
         console.log('Canvas found')
         
+        // キャンバス更新イベント
         allEvents.push({
           id: `canvas_updated_${canvas.id}`,
           title: 'リーンキャンバスが更新されました',
@@ -163,7 +245,7 @@ export default function ProjectTimeline({ projectId, fullPage = false }: { proje
       console.error('Error in canvas fetch:', err)
     }
     
-    // 3. 仮説があればさらに詳細データ取得
+    // 4. 仮説があれば検証データを取得
     if (hypothesesList.length > 0) {
       const hypothesisIds = hypothesesList.map(h => h.id).filter(Boolean)
       
@@ -187,8 +269,9 @@ export default function ProjectTimeline({ projectId, fullPage = false }: { proje
           } else if (validations && validations.length > 0) {
             console.log(`Found ${validations.length} validations`)
             
-            validations.forEach(v => {
-              if (!v.id || !v.created_at || !v.hypothesis_id) return
+            // 各検証に関連するユーザー情報を取得
+            for (const v of validations) {
+              if (!v.id || !v.created_at || !v.hypothesis_id) continue
               
               const hypothesisTitle = hypothesesMap[v.hypothesis_id]?.title || '不明な仮説'
               
@@ -204,30 +287,76 @@ export default function ProjectTimeline({ projectId, fullPage = false }: { proje
                 resultColor = 'bg-rose-600'
               }
               
-              allEvents.push({
-                id: `validation_created_${v.id}`,
-                title: '検証が実施されました',
-                description: `「${hypothesisTitle}」に対する${v.method || '検証'}`,
-                timestamp: v.created_at,
-                type: 'validation_created',
-                icon: resultIcon,
-                color: resultColor,
-                entityId: v.hypothesis_id,
-                entityType: 'validation',
-                url: `/projects/${projectId}/hypotheses/${v.hypothesis_id}/validations/${v.id}`
-              })
-            })
+              // 検証に基づく仮説バージョンを検索して作成者を取得
+              try {
+                const { data: versionData, error: versionError } = await supabase
+                  .from('hypothesis_versions')
+                  .select('updated_by')
+                  .eq('based_on_validation_id', v.id)
+                  .limit(1)
+                
+                let userId = null
+                
+                if (!versionError && versionData && versionData.length > 0 && versionData[0].updated_by) {
+                  userId = versionData[0].updated_by
+                  userIdsToFetch.add(userId)
+                }
+                
+                allEvents.push({
+                  id: `validation_created_${v.id}`,
+                  title: '検証が実施されました',
+                  description: `「${hypothesisTitle}」に対する${v.method || '検証'}`,
+                  timestamp: v.created_at,
+                  type: 'validation_created',
+                  icon: resultIcon,
+                  color: resultColor,
+                  entityId: v.hypothesis_id,
+                  entityType: 'validation',
+                  url: `/projects/${projectId}/hypotheses/${v.hypothesis_id}/validations/${v.id}`,
+                  userId
+                })
+              } catch (err) {
+                console.error(`Error fetching validation creator for ${v.id}:`, err)
+                
+                // エラー発生時もイベントは追加
+                allEvents.push({
+                  id: `validation_created_${v.id}`,
+                  title: '検証が実施されました',
+                  description: `「${hypothesisTitle}」に対する${v.method || '検証'}`,
+                  timestamp: v.created_at,
+                  type: 'validation_created',
+                  icon: resultIcon,
+                  color: resultColor,
+                  entityId: v.hypothesis_id,
+                  entityType: 'validation',
+                  url: `/projects/${projectId}/hypotheses/${v.hypothesis_id}/validations/${v.id}`
+                })
+              }
+            }
           }
         } catch (err) {
           console.error('Error in validations fetch:', err)
         }
       }
     }
-
+  
     // すべてのイベントを日付でソート (新しい順)
     allEvents.sort((a, b) => {
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     })
+    
+    // 5. ユーザー情報を一括取得して各イベントに適用
+    if (userIdsToFetch.size > 0) {
+      const userIds = Array.from(userIdsToFetch)
+      const profiles = await fetchUserProfiles(userIds)
+      
+      // ユーザー名を各イベントに追加
+      allEvents.forEach(event => {
+        if (event.userId && profiles[event.userId]) {
+          event.userName = profiles[event.userId].display_name || profiles[event.userId].email || '不明なユーザー'
+        }
+      })
+    }
     
     console.log(`Timeline processing complete. ${allEvents.length} events found.`)
     setEvents(allEvents)
@@ -351,8 +480,18 @@ export default function ProjectTimeline({ projectId, fullPage = false }: { proje
               <div className={`absolute left-[-6px] top-0 w-3 h-3 rounded-full ${event.color} ring-2 ring-white`}></div>
               
               <div className="flex flex-col space-y-1">
-                <div className="flex items-center gap-1 text-xs text-slate-500">
-                  <span>{getTimeAgo(event.timestamp)}</span>
+              <div className="flex items-center gap-1 text-xs text-slate-500">
+              <span>{getTimeAgo(event.timestamp)}</span>
+                {/* ユーザー名を表示（存在する場合） */}
+                {event.userName && (
+                  <span className="flex items-center gap-1 ml-2">
+                    <span className="text-slate-400">by</span>
+                    <span className="flex items-center gap-0.5">
+                      <User size={12} className="text-slate-400" />
+                      <span className="text-slate-600">{event.userName}</span>
+                    </span>
+                  </span>
+                )}
                 </div>
                 
                 {/* イベント内容表示 - 修正 */}
